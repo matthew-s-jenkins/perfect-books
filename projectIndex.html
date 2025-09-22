@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Harvest - Project Index.</title>
+    <script src="https://cdn.tailwindcss.com"></script> 
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans">
+    <div class=""container mx-auto px-4 py-12 max-w-4xl text-center">
+    <header class=""mb-12">
+        <h1 class="text-4xl font-bold mb-4">Digital Harvest - Project Index</h1>
+        <p class="text-lg mb-8">A collection of stories and scenarios from the Digital Harvest business simulation project.</p>
+    </header>
+            <main>
+            <p class="text-lg mb-8">Choose an option below to get started.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+
+                <a href="index_v2.html" class="block bg-gray-800 p-6 rounded-lg shadow-lg hover:bg-gray-700 hover:scale-105 transition-transform duration-200 ease-in-out">
+                    <h2 class="text-2xl font-semibold text-blue-400 mb-2">🚀 Launch Web UI (Recommended)</h2>
+                    <p class="text-gray-400">
+                        The full-featured graphical interface. Manage inventory, suppliers, marketing, and finances in a modern dashboard.
+                    </p>
+                    <span class="mt-4 inline-block font-semibold text-blue-300">Click to Open &rarr;</span>
+                </a>
+
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h2 class="text-2xl font-semibold text-green-400 mb-2">💻 Run Terminal Version</h2>
+                    <p class="text-gray-400 mb-4">
+                        For a classic, command-line experience. Run the following command in your terminal:
+                    </p>
+                    <code class="block w-full bg-gray-900 text-green-300 p-3 rounded-md text-sm font-mono">
+                        python src_v2/cli_v2.py
+                    </code>
+                </div>
+
+                <a href="README.md" class="block bg-gray-800 p-6 rounded-lg shadow-lg hover:bg-gray-700 hover:scale-105 transition-transform duration-200 ease-in-out">
+                    <h2 class="text-2xl font-semibold text-yellow-400 mb-2">📖 Read the Documentation</h2>
+                    <p class="text-gray-400">
+                        View the project's `README.md` file to learn about the tech stack, setup instructions, and database schema.
+                    </p>
+                     <span class="mt-4 inline-block font-semibold text-yellow-300">View README.md &rarr;</span>
+                </a>
+
+                <a href="/stories/index.html" class="block bg-gray-800 p-6 rounded-lg shadow-lg hover:bg-gray-700 hover:scale-105 transition-transform duration-200 ease-in-out">
+                    <h2 class="text-2xl font-semibold text-purple-400 mb-2">📚 View Gameplay Stories</h2>
+                    <p class="text-gray-400">
+                        Read through logs and stories from past simulation sessions to see the game in action. (Create a `/stories` directory for this).
+                    </p>
+                    <span class="mt-4 inline-block font-semibold text-purple-300">Browse Stories &rarr;</span>
+                </a>
+
+            </div>
+        </main>
+        <footer class="mt-16 text-gray-500 text-sm">
+            <p>Thank you for for visiting.</p>
+        </footer>
+    </div>
+</body>
+</html>
