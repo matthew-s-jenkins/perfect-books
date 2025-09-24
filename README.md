@@ -1,10 +1,8 @@
-# Digital Harvest - Accounting-Based Business Simulator
+# Perfect Books - Personal Financial Management
 
 ## Project Objective
 
-Perfect Books begins as version Digital Harvest 2.0. Its likely to become the bones of the next version of Digital Harvest.
-
-This project will become a personal financial management and tracking system for myself until i can make it public for other users.
+This project is a personal financial management application built on the principles of double-entry accounting. The goal is to create a robust tracking system for personal use that can eventually be made public for other users.
 
 This is open source and you can download it yourself and run it locally right now.
 
@@ -28,10 +26,15 @@ This is open source and you can download it yourself and run it locally right no
 * **Persistent State:** The simulation's state (cash on hand, current date) is persisted in the database, allowing it to be stopped and restarted seamlessly.
 
 ### User Interfaces & Analysis
+
 * **Enhanced Web UI (v2):** A comprehensive React-based dashboard with multiple pages for inventory management, supplier relationships, marketing campaigns, expense tracking, and financial analysis.
 * **Real-time Debug Tools:** Built-in debugging panels to monitor sales activity, inventory changes, and system performance.
-* **Terminal Application:** A classic command-line interface provides an alternative way to manage the business day-by-day.
+* **Terminal Application:** A classic command-line interface provides an alternative way to interact with the application.
 * **BI-Ready Schema:** The normalized MySQL database is designed for direct connection with business intelligence tools like Power BI, enabling the creation of live, interactive dashboards.
+
+## Design Philosophy
+
+This project is built with a modular design. The core accounting logic in the `engine.py` file is separated from the web interface (`api.py`) and the database schema (`setup.py`). This separation makes it easy to add new features or even pivot the application's purpose in the future, such as re-introducing business-specific features like inventory management.
 
 ## Tech Stack
 
@@ -105,7 +108,7 @@ Real-Time Validation KPIs: This dashboard includes cards for Total Debits and To
 ### 1. Database Setup
 
 1.  Ensure your MySQL server is running.
-2.  Update the `DB_CONFIG` dictionary in `/src_v2/setup_v2.py`, `/src_v2/api_v2.py`, and '/srv_v2/engine_v2.py with your MySQL credentials (user, password, host, port).
+2.  Update the `DB_CONFIG` dictionary in `/src/setup.py`, `/src/api.py`, and '/srv/engine.py with your MySQL credentials (user, password, host, port).
 
 ### 2. Install Dependencies
 
@@ -117,7 +120,7 @@ pip install -r requirements.txt
 ### 3. Initialize the Database
 Run the setup script **once** from your terminal. This will create the `digital_harvest` database, build the required tables, and populate the initial product catalog.
 ```bash
-python src_v2/setup_v2.py
+python src/setup.py
 ```
 
 *Note: This script will completely drop and recreate the database each time it is run.*
@@ -128,25 +131,25 @@ You can run either the Web UI or the Terminal version.
 **To use the Web UI v2 (Recommended):**
 1. Start the backend API server:
    ```bash
-   python src_v2/api_v2.py
+   python src/api.py
    ```
 2. Start the local web server (in a separate terminal):
    ```bash
-   cd C:\FarmFiles
+   cd path/to/your/Perfect_Books
    python -m http.server 8080
    ```
    You should see: `Serving HTTP on 0.0.0.0 port 8080 (http://0.0.0.0:8080/) ...`
 3. Open your web browser and navigate to:
    ```
-   http://localhost:8080/index_v2.html
+   http://localhost:8080/index.html
    ```
 
 **To use the Terminal Application:**
 ```bash
-python src_v2/cli_v2.py
+python src/cli.py
 ```
 
-**Note:** The web interfaces require both the API server (`api_v2.py`) and the local web server to be running simultaneously in separate terminal windows.
+**Note:** The web interfaces require both the API server (`api.py`) and the local web server to be running simultaneously in separate terminal windows.
 
 ## Database Schema
 
@@ -160,25 +163,10 @@ python src_v2/cli_v2.py
 
 ```
 digital-harvest/
-├── src/              # Original implementation
-├── src_v1/           # First new version
-├── src_v2/           # Enhanced v2 implementation (recommended)
-│   ├── engine_v2.py  # Core business simulation engine
-│   ├── api_v2.py     # Flask REST API
-│   ├── cli_v2.py     # Terminal interface
-│   └── setup_v2.py   # Database initialization
-├── index.html        # Simple working model
-├── index_v1.html     # Basic web interface with expenses
-├── index_v2.html     # Enhanced web interface with dashboard (recommended)
-└── screenshots/      # Dashboard examples
+├── src/           # Python files to run the backend
+│   ├── engine.py  # Core business simulation engine
+│   ├── api.py     # Flask REST API
+│   ├── cli.py     # Terminal interface
+│   └── setup.py   # Database initialization
+├── index.html     # Enhanced web interface with dashboard (recommended)
 ```
-
-## What's New in v2
-
-* **Multi-page Web Interface:** Dedicated pages for Dashboard, Inventory, Suppliers, Marketing, Expenses, and Banking
-* **Market Events:** Dynamic events that boost demand for specific product types
-* **Progressive Unlocks:** Products unlock as your business reaches revenue milestones
-* **Enhanced Vendor System:** Multiple suppliers with different terms, lead times, and relationships
-* **Loan System:** Access business financing with realistic terms
-* **Debug Tools:** Built-in debugging panels to monitor simulation activity
-* **Improved Sales Model:** More sophisticated demand calculation with product-specific attributes
