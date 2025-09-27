@@ -29,12 +29,6 @@ TABLES['financial_ledger'] = (
     "  INDEX `idx_transaction_uuid` (`transaction_uuid`)"
     ") ENGINE=InnoDB")
 
-TABLES['business_state'] = (
-    "CREATE TABLE `business_state` ("
-    "  `state_key` VARCHAR(50) PRIMARY KEY,"
-    "  `state_value` VARCHAR(255) NOT NULL"
-    ") ENGINE=InnoDB")
-    
 TABLES['recurring_expenses'] = (
     "CREATE TABLE `recurring_expenses` ("
     "  `expense_id` INT AUTO_INCREMENT PRIMARY KEY,"
@@ -54,6 +48,14 @@ TABLES['loans'] = (
     "  `monthly_payment` DECIMAL(10, 2) NOT NULL,"
     "  `next_payment_date` DATE NOT NULL,"
     "  `status` ENUM('ACTIVE', 'PAID') NOT NULL DEFAULT 'ACTIVE'"
+    ") ENGINE=InnoDB")
+
+TABLES['accounts'] = (
+    "CREATE TABLE `accounts` ("
+    " `account_id` INT AUTO_INCREMENT PRIMARY KEY,"
+    " `name` VARCHAR(100) NOT NULL UNIQUE,"
+    " `type` ENUM('CHECKING', 'SAVINGS', 'CREDIT_CARD', 'CASH') NOT NULL,"
+    " `balance` DECIMAL(12, 2) NOT NULL DEFAULT 0.00"
     ") ENGINE=InnoDB")
 
 # --- STARTING GAME DATA ---
@@ -84,11 +86,6 @@ def main():
 
         print("\n--- Populating Initial Data ---")
         
-        # cursor.execute("INSERT INTO business_state (state_key, state_value) VALUES (%s, %s)", ('cash_on_hand', '50000.00'))
-        # cursor.execute("INSERT INTO business_state (state_key, state_value) VALUES (%s, %s)", ('current_date', '2025-01-01 09:00:00'))
-        # cursor.execute("INSERT INTO business_state (state_key, state_value) VALUES (%s, %s)", ('start_date', '2025-01-01 09:00:00'))
-        print("  - Set initial state (cash, date).")
-
         db_connection.commit()
         print("\n--- Initial data populated successfully! ---")
 
