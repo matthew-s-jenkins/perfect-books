@@ -21,47 +21,70 @@ DB_CONFIG = {
 class BusinessSimulator:
     # --- Core/Setup Methods ---
     def __init__(self):
-        self._load_state()
-        print(f"✅ Business simulation engine v2 initialized. Cash: ${self.cash:,.2f}, Date: {self.current_date.date()}")
+        self.accounts = {}
+        self.current_date = None
+        self._load_accounts_and_date()
     
     def _get_db_connection(self):
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn, conn.cursor(dictionary=True, buffered=True)
 
-    def _load_state(self):
+    def _load_accounts_and_date(self):
+        """Loads all accounts and the last transaction date from the database."""
         conn, cursor = self._get_db_connection()
-        cursor.execute("SELECT state_key, state_value FROM business_state")
-        state = {row['state_key']: row['state_value'] for row in cursor.fetchall()}
-        self.cash = Decimal(state.get('cash_on_hand', '20000.00'))
-        self.current_date = datetime.datetime.strptime(state.get('current_date', '2025-01-01 09:00:00'), "%Y-%m-%d %H:%M:%S")
-        self.simulation_start_date = datetime.datetime.strptime(state.get('start_date', '2025-01-01 09:00:00'), "%Y-%m-%d %H:%M:%S")
-        cursor.close()
-        conn.close()
+        try:
+            # Load all accounts into the self.accounts dictionary
+            cursor.execute("SELECT * FROM accounts")
+            for row in cursor.fetchall():
+                self.accounts[row['account_id']] = {
+                    'name': row['name'],
+                    'type': row['type'],
+                    'balance': row['balance']
+                }
+            print(f"Loaded {len(self.accounts)} account(s),")
 
-    def _save_state(self):
-        conn, cursor = self._get_db_connection()
-        query = "INSERT INTO business_state (state_key, state_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE state_value = VALUES(state_value)"
-        cursor.execute(query, ('cash_on_hand', str(self.cash)))
-        cursor.execute(query, ('current_date', self.current_date.strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        cursor.close()
-        conn.close()
+            # Find the most recent transaction date to set as the current date
+            cursor.execute("SELECT MAX(transaction_date) AS last_date FROM financial_ledger")
+            result = cursor.fetchone()
+            if result and result['last_date']:
+                self.current_date = result['last_date']
+            else:
+                # If there are no transactions, it's a fresh start, use today's date
+                self.current_date = datetime.datetime.now()
+            print(f"Set current date to {self.current_date.date()}.")
+        
+        except mysql.connector.Error as err:
+            print(f"Error loading state: {err}")
+            # Sets defaults if loading fails
+            self.accounts = {}
+            self.current_date = datetime.datetime.now()
+        finally:
+            if 'conn' in locals() and conn.is_connected():
+                cursor.close()
+                conn.close()
 
     # --- Public API Methods (Data Retrieval) ---
     def get_status_summary(self):
+        # Calculate total cash from asset accounts (Checking, Savings, Cash)
+        total_cash = 0
+        for acc_id, acc_data in self.accounts.items():
+            if acc_data['type'] in ['CHECKING', 'SAVINGS', 'CASH']:
+                total_cash += acc_data['balance']
+        
         conn, cursor = self._get_db_connection()
         loans_query = "SELECT SUM(outstanding_balance) as total_debt FROM loans WHERE status = 'ACTIVE'"
         cursor.execute(loans_query)
         debt_result = cursor.fetchone()
+        
         summary = {
-            'cash': float(self.cash),
+            'cash': float(total_cash),
             'date': self.current_date,
             'total_debt': float(debt_result['total_debt']) if debt_result and debt_result['total_debt'] else 0.0,
         }
         cursor.close()
         conn.close()
         return summary
-           
+    
     def get_sales_history(self):
         conn, cursor = self._get_db_connection()
         days_elapsed = (self.current_date - self.simulation_start_date).days
@@ -112,6 +135,33 @@ class BusinessSimulator:
         offer = {"id": 1, "principal": float(principal), "apr": float(annual_rate * 100), "term_months": num_payments, "monthly_payment": float(round(monthly_payment, 2))}
         return [offer]
 
+    def get_accounts_list(self):
+        """Returns the dictionary of all loaded accounts"""
+        return self.accounts
+    
+    def get_ledger_entries(self, limit=50):
+        """Fetches the most recent financial ledger entries from the database."""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Fetches the last 50 entries, ordered with the most recent first.
+            # This provides a reverse-chronological history of transactions.
+            query = (
+                "SELECT transaction_date, description, account, debit, credit "
+                "FROM financial_ledger "
+                "ORDER BY entry_id DESC "
+                "LIMIT %s"
+            )
+            cursor.execute(query, (limit,))
+            results = cursor.fetchall()
+            return results
+        except mysql.connector.Error as err:
+            print(f"Database error fetching ledger: {err}")
+            return [] # Return an empty list on error
+        finally:
+            if 'conn' in locals() and conn.is_connected():
+                cursor.close()
+                conn.close()
+
     # --- Public API Methods (Actions) ---
     def accept_loan(self, offer_id):
         if offer_id != 1: return False, "Invalid loan offer."
@@ -160,6 +210,105 @@ class BusinessSimulator:
                 cursor.close()
                 conn.close()
 
+    def log_income(self, account_id, description, amount):
+        """Logs an income transaction to a specific account."""
+        try:
+            # 1. Input Validation
+            amount = Decimal(amount)
+            if amount <= 0:
+                return False, "Income amount must be positive."
+            if account_id not in self.accounts:
+                return False, "Invalid account specified."
+
+            # 2. Update Balance in Memory
+            self.accounts[account_id]['balance'] += amount
+            
+            # 3. Get Database Connection & Account Name
+            conn, cursor = self._get_db_connection()
+            account_name = self.accounts[account_id]['name']
+            uuid = f"income-{int(time.time())}-{account_id}"
+
+            # 4. Record Double-Entry Transaction
+            fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
+            # Debit the specific asset account (e.g., 'Chase Checking')
+            cursor.execute(fin_query, (uuid, self.current_date, account_name, description, amount, 0))
+            # Credit Income (which increases Equity)
+            cursor.execute(fin_query, (uuid, self.current_date, 'Income', description, 0, amount))
+
+            # 5. Persist the New Balance to the Database
+            update_query = "UPDATE accounts SET balance = %s WHERE account_id = %s"
+            cursor.execute(update_query, (self.accounts[account_id]['balance'], account_id))
+
+            # 6. Finalize Transaction
+            conn.commit()
+            return True, f"Successfully logged income to '{account_name}': ${amount:,.2f}"
+        
+        except Exception as e:
+            if 'conn' in locals() and conn.is_connected():
+                conn.rollback()
+            # If something fails, revert the balance change in memory
+            if 'account_id' in locals() and account_id in self.accounts:
+                self.accounts[account_id]['balance'] -= amount
+            return False, f"An error occurred while logging income: {e}"
+        
+        finally:
+            if 'conn' in locals() and conn.is_connected():
+                cursor.close()
+                conn.close()
+    
+    def log_expense(self, account_id, description, amount):
+        """Logs a one time expense to a specific account."""
+        try:
+            # 1. Input Validation
+            amount = Decimal(amount)
+            if amount <= 0:
+                return False, "Expense amount must be positive."
+            if account_id not in self.accounts:
+                return False, "Invalid account specified."
+
+            account_type = self.accounts[account_id]['type']
+            current_balance = self.accounts[account_id]['balance']
+
+            # 2. Sufficient Funds Check (for non-credit accounts)
+            if account_type != 'CREDIT_CARD' and current_balance < amount:
+                return False, f"Insufficient funds. Balance: ${current_balance:.2f}"
+
+            # 3. Update Balance in Memory
+            self.accounts[account_id]['balance'] -= amount
+            
+            # 4. Get Database Connection & Account Name
+            conn, cursor = self._get_db_connection()
+            account_name = self.accounts[account_id]['name']
+            uuid = f"expense-{int(time.time())}-{account_id}"
+
+            # 5. Record Double-Entry Transaction
+            fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
+            # Debit a general 'Expenses' account (which reduces equity)
+            cursor.execute(fin_query, (uuid, self.current_date, 'Expenses', description, amount, 0))
+            # Credit the specific asset/liability account used for payment
+            cursor.execute(fin_query, (uuid, self.current_date, account_name, description, 0, amount))
+
+            # 6. Persist the New Balance to the Database
+            update_query = "UPDATE accounts SET balance = %s WHERE account_id = %s"
+            cursor.execute(update_query, (self.accounts[account_id]['balance'], account_id))
+
+            # 7. Finalize Transaction
+            conn.commit()
+            return True, f"Successfully logged expense from '{account_name}': ${amount:,.2f}"
+        
+        except Exception as e:
+            if 'conn' in locals() and conn.is_connected():
+                conn.rollback()
+            # If something fails, revert the balance change in memory
+            if 'account_id' in locals() and account_id in self.accounts:
+                self.accounts[account_id]['balance'] += amount
+            return False, f"An error occurred while logging expense: {e}"
+        
+        finally:
+            if 'conn' in locals() and conn.is_connected():
+                cursor.close()
+                conn.close()
+
     def auto_advance_time(self):
         """Calculates elapsed days and runs the simulation to catch up to today."""
         today = datetime.datetime.now().date()
@@ -180,8 +329,7 @@ class BusinessSimulator:
             log_messages.extend(self._process_loan_payments())
                         
             self.current_date += datetime.timedelta(days=1)
-        
-        self._save_state()
+
         print("✅ Simulation advance complete.")
         return {'log': log_messages}
 
@@ -261,7 +409,7 @@ class BusinessSimulator:
             credits = result['total_credits'] or 0
             return abs(debits - credits) < 0.01  # Allow for small rounding differences
         return False
-
+    
     def _add_business_days(self, start_date, business_days):
         """Add business days (Mon-Fri) to a date, skipping weekends"""
         current_date = start_date

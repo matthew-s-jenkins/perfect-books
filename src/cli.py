@@ -50,25 +50,189 @@ def handle_manage_expenses(sim):
     print("\nFinished managing expenses.")
     input("Press Enter to return to the main menu...")
 
-def run_setup_wizard():
-    print("Welcome to Perfect Books! Let's get you set up.")
+def handle_log_income(sim):
+    """Handles user input for logging a new income transaction."""
+    print("\n--- Log Income ---")
+
+    # 1. Get and display a list of valid accounts to deposit into
+    accounts = sim.get_accounts_list()
+    # Only asset accounts can be deposited into, not credit cards (liabilities)
+    deposit_accounts = {k: v for k, v in accounts.items() if v['type'] != 'CREDIT_CARD'}
+
+    if not deposit_accounts:
+        print("No valid deposit accounts (e.g., Credit, Savings) found.")
+        input("\nPress Enter to return to the menu...")
+        return
     
-    starting_cash = input("What is your current cash or checking account balance? $")
+    print("Which account did you receive the income in?")
+    # Create a list for the indexed selection
+    account_options = list(deposit_accounts.items())
+    for i, (acc_id, acc_data) in enumerate(account_options):
+        print(f" [{i+1}] {acc_data['name']} (${acc_data["balance"]:,.2f})")
+    
+    try:
+        # 2. Get the user's choice
+        choice_str = input("> ")
+        choice_idx = int(choice_str) - 1
+
+        if not 0 <= choice_idx < len(account_options):
+            print("Invalid selection.")
+            input("\nPress Enter to return to the menu")
+            return
+        
+        selected_account_id = account_options[choice_idx][0]
+
+        # 3. Get transaction details
+        description = input("Enter a description for this income (e.g., 'Paycheck'):")
+        amount_str = input(f"Enter the amount: $")
+        amount = float(amount_str)
+
+        # 4. Call the Transaction
+        success, message = sim.log_income(selected_account_id, description, amount)
+        print(f" -> {message}")
+    
+    except (ValueError, IndexError):
+        print(" -> Invalid input. Please enter valid numbers.")
+    
+    input("\nPress Enter to return to the main menu")
+
+def handle_log_expense(sim):
+    """Handles user input for logging a new one-time expense."""
+    print("\n--- Log One-Time Expense ---")
+
+    # 1. Get and display a list of valid accounts to deposit into
+    accounts = sim.get_accounts_list()
+    if not accounts:
+        print("No accounts found.")
+        input("\nPress Enter to return to the menu...")
+        return
+    
+    print("Which account are you paying from?")
+    # Create a list for the indexed selection
+    account_options = list(accounts.items())
+    for i, (acc_id, acc_data) in enumerate(account_options):
+        print(f" [{i+1}] {acc_data['name']} (${acc_data["balance"]:,.2f})")
+    
+    try:
+        # 2. Get the user's choice
+        choice_str = input("> ")
+        choice_idx = int(choice_str) - 1
+
+        if not 0 <= choice_idx < len(account_options):
+            print("Invalid selection.")
+            input("\nPress Enter to return to the menu")
+            return
+        
+        selected_account_id = account_options[choice_idx][0]
+
+        # 3. Get transaction details
+        description = input("Enter a description for this expense (e.g., 'Groceries'):")
+        amount_str = input(f"Enter the amount: $")
+        amount = float(amount_str)
+
+        # 4. Call the engine to log the transaction
+        success, message = sim.log_expense(selected_account_id, description, amount)
+        print(f" -> {message}")
+    
+    except (ValueError, IndexError):
+        print(" -> Invalid input. Please enter valid numbers.")
+    
+    input("\nPress Enter to return to the main menu")
+
+def handle_view_accounts(sim):
+    """Displays a formatted list of all accounts and their balances"""
+    print("\n--- Your Accounts ---")
+    accounts = sim.get_accounts_list()
+
+    if not accounts:
+        print("No accounts have been set up yet.")
+    else:
+        # Print a header for our table
+        print(f"{'Account Name':<25} {'Type':<15} {'Balance':>15}")
+        print("-" * 57)
+
+        # Loop through the account data and print each row
+        for acc_id, acc_data in accounts.items():
+            name = acc_data['name'] 
+            acc_type = acc_data['type']
+            balance = acc_data['balance']
+            print(f"{name:<25} {acc_type:<15} ${balance:>15,.2f}")
+        
+        input("\nPress Enter to return to the main menu")
+
+def handle_view_ledger(sim):
+    """Displays the most recent entries from the financial ledger"""
+    print("\n--- Financial Ledger (Last 50 Entries) ---")
+    entries = sim.get_ledger_entries()
+
+    if not entries:
+        print("No transactions have been recorded yet.")
+    else:
+        # Print a header for our ledger table
+        print(f"{'Date':<12} {'Account':<20} {'Description':<30} {'Debit':>12} {'Credit':>12}")
+        print("-" * 88)
+    
+        # Loop through each transaction entry and print its details
+        for entry in entries:
+            # Format the date to show only YYYY-MM-DD
+            date_str = entry['transaction_date'].strftime('%Y-%m-%d')
+            account = entry['account']
+            desc = entry['description']
+
+            # Prepare debit and credit amounts for clean printing
+            debit_str = f"${entry['debit']:.2f}" if entry['debit'] > 0 else ""
+            credit_str = f"${entry['credit']:.2f}" if entry['credit'] > 0 else ""
+
+            # Truncate long descriptions to keep the tables aligned
+            if len(desc) > 28:
+                desc = desc[:25] + "..."
+
+            print(f"{date_str:<12} {account:<20} {desc:<30} {debit_str:>12} {credit_str:>12}")
+    
+    input("\nPress Enter to return to the main menu...")
+
+def run_setup_wizard():
+    print("Welcome to Perfect Books! Let's set up your financial accounts.")
+    accounts_to_add = []
     
     while True:
-        description = input("Enter new expense description (or type 'done' to finish): ")
-        if description.lower() == 'done':
-            break
-        try:
-            amount_str = input(f"Enter the monthly amount for '{description}: $")
-            amount = float(amount_str)
+        print("\n--- Add a New Account ---")
+        name = input("Account Name (e.g., 'Chase Checking', 'Visa Card'): ")
+        if not name:
+            print("Account name cannot be empty. Please try again.")
+            continue
 
-            # Call the function from engine
-            success, message = sim.add_recurring_expense(description, 'Bills', amount)
-            print(f"  -> {message}")
+        print("Select Account Type: [1] Checking, [2] Savings, [3] Credit Card, [4] Cash")
+        type_choice = input("> ")
+        
+        type_map = {'1': 'CHECKING', '2': 'SAVINGS', '3': 'CREDIT_CARD', '4': 'CASH'}
+        account_type = type_map.get(type_choice)
+        if not account_type:
+            print("Invalid selection. Please try again.")
+            continue
+
+        try:
+            balance_str = input(f"Current balance for '{name}': $")
+            balance = float(balance_str)
+            # For credit cards, balance should be negative to represent debt
+            if account_type == 'CREDIT_CARD' and balance > 0:
+                balance = -balance
         except ValueError:
-            print("  -> Invalid amount. Please enter a number.")
+            print("Invalid balance. Please enter a number.")
+            continue
+        
+        accounts_to_add.append({'name': name, 'type': account_type, 'balance': balance})
+        print(f"Account '{name}' added.")
+
+        add_another = input("Add another account? (y/n): ").lower()
+        if add_another != 'y':
+            break
     
+    # --- Save all accounts to the database ---
+    if not accounts_to_add:
+        print("No accounts added. Exiting setup.")
+        return
+
     try:
         conn = mysql.connector.connect(
             user=os.getenv('DB_USER'), 
@@ -79,17 +243,14 @@ def run_setup_wizard():
         )
         cursor = conn.cursor()
 
-        # Save the starting cash
-        cursor.execute("INSERT INTO business_state (state_key, state_value) VALUES (%s, %s)", ('cash_on_hand', starting_cash))
-
-        # Save the current date as the start date
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("INSERT INTO business_state (state_key, state_value) VALUES (%s, %s)", ('current_date', now))
-        cursor.execute("INSERT INTO business_state (state_key, state_value) VALUES (%s, %s)", ('start_date', now))
+        for acc in accounts_to_add:
+            cursor.execute(
+                "INSERT INTO accounts (name, type, balance) VALUES (%s, %s, %s)",
+                (acc['name'], acc['type'], acc['balance'])
+            )
         
         conn.commit()
-        
-        print("\n✅ Setup complete!")
+        print("\n✅ Your accounts have been saved!")
         print("Please run the program again to access the main menu.")
 
     except mysql.connector.Error as err:
@@ -117,24 +278,35 @@ def check_db_connection():
 def run_main_menu():
     try:
         sim = BusinessSimulator()
-        sim.auto_advance_time()
     except Exception as e:
         print(f"FATAL: Could not initialize simulator. Is the database running? Error: {e}")
         return
     while True:
         print_status(sim)
         print("\n--- MAIN MENU ---")
-        print("1. Manage Expenses")
-        print("2. Advance Time")
-        print("3. Exit")
+        print("1. View Accounts & Balances")
+        print("2. View Transaction Ledger")
+        print("3. Log Income")
+        print("4. Log One-Time Expense")
+        print("5. Manage Recurring Expenses")
+        print("6. Advance Time")
+        print("7. Exit")
         
         choice = input("> ")
         
         if choice == '1':
-            handle_manage_expenses(sim)
+            handle_view_accounts(sim)
         elif choice == '2':
-            handle_advance_time(sim)
+            handle_view_ledger(sim)
         elif choice == '3':
+            handle_log_income(sim)
+        elif choice == '4':
+            handle_log_expense(sim)
+        elif choice == '5':
+            handle_manage_expenses(sim)
+        elif choice == '6':
+            handle_advance_time(sim)
+        elif choice == '7':
             print("Goodbye!")
             break
         else:
@@ -153,7 +325,7 @@ def main():
             database=os.getenv('DB_NAME')
         )
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM business_state LIMIT 1")
+        cursor.execute("SELECT 1 FROM accounts LIMIT 1")
         # If the query returns nothing (None), the table is empty and setup is needed.
         setup_needed = cursor.fetchone() is None
         cursor.close()
@@ -164,6 +336,11 @@ def main():
     if setup_needed:
         run_setup_wizard()
     else:
+        try:
+            sim_for_startup = BusinessSimulator()
+            sim_for_startup.auto_advance_time()
+        except Exception as e:
+            print(f"Error during time advance: {e}")
         run_main_menu()
 
 if __name__ == "__main__":
