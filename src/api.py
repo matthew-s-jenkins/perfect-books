@@ -57,8 +57,11 @@ def get_sales_history():
 @check_sim
 def get_accounts():
     """Endpoint to get all user accounts and their balance"""
-    # We use list() to convert the dictionary values into a list for easier use in React
-    accounts_list = list(sim.get_accounts_list().values())
+    # This loops through the items, keeping the ID
+    accounts_list = [
+        {'account_id': acc_id, **acc_data}
+        for acc_id, acc_data in sim.get_accounts_list().items()
+    ]
     return jsonify(accounts_list)
 
 @app.route('/api/ledger', methods=['GET'])
@@ -95,6 +98,82 @@ def accept_loan():
     success, message = sim.accept_loan(offer_id)
     return jsonify({"success": success, "message": message})
     
+@app.route('/api/income', methods=['POST'])
+@check_sim
+def log_income_api():
+    """API Endpoint to log a new income transaction"""
+    # 1. Get the JSON data sent from the frontend
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "message": "No data provided."}), 400
+
+    # 2. Extract and validate te required fields
+    account_id = data.get('account_id')
+    description = data.get('description')
+    amount = data.get('amount')
+
+    if not all([account_id, description, amount]):
+        return jsonify({"success": False, "message":"Missing required fields."}), 400
+    
+    # 3. Call the trusted engine method
+    success, message = sim.log_income(
+        account_id=account_id,
+        description=description,
+        amount=amount
+    )
+
+    # 4. Return a JSON response to the frontend
+    if success:
+        # On success, also send back the updated list of accounts
+        updated_accounts = [
+            {'account_id': acc_id, **acc_data}
+            for acc_id, acc_data in sim.get_accounts_list().items()
+        ]
+        return jsonify({"success": True, "message": message, "accounts": updated_accounts})
+    else:
+        return jsonify({"success": False, "message": message}), 500
+
+@app.route('/api/expense', methods=['POST'])
+@check_sim
+def log_expense_api():
+    """API endpoint to log a new one-time expense transaction."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "message": "No data provided."}), 400
+
+    account_id = data.get('account_id')
+    description = data.get('description')
+    amount = data.get('amount')
+
+    if not all([account_id, description, amount]):
+        return jsonify({"success": False, "message":"Missing required fields."}), 400
+    
+    # The only major change is calling the correct engine method
+    success, message = sim.log_expense(
+        account_id=account_id,
+        description=description,
+        amount=amount
+    )
+
+    if success:
+        # We just need to signal success; the frontend will handle the refresh
+        return jsonify({"success": True, "message": message})
+    else:
+        # Send a more specific error code if the engine fails (e.g., insufficient funds)
+        return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/descriptions/income', methods=['GET'])
+@check_sim
+def get_income_descriptions():
+    """Endpoint to get a unique list of past income descriptions."""
+    return jsonify(sim.get_unique_descriptions(transaction_type='income'))
+
+@app.route('/api/descriptions/expense', methods=['GET'])
+@check_sim
+def get_expense_descriptions():
+    """Endpoint to get a unique list of past expense descriptions."""
+    return jsonify(sim.get_unique_descriptions(transaction_type='expense'))
+
 # --- RUN THE APP ---
 if __name__ == '__main__':
     # Setting debug=True gives you helpful error messages in the browser

@@ -87,6 +87,190 @@
                 </div>
             );
         }
+        function LogIncomeForm({ accounts, onClose, onIncomeAdded, suggestions }) {
+            // State for each form input
+            const [description, setDescription] = useState('');
+            const [amount, setAmount] = useState('');
+            const [selectedAccountId, setSelectedAccountId] = useState('');
+            const [error, setError] = useState('');
+
+            const handleSubmit = async (event) => {
+                event.preventDefault(); // Prevent default browser form submission
+                if (!selectedAccountId) {
+                    setError('Please select an account.');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/income`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            description: description,
+                            amount: parseFloat(amount),
+                            account_id: parseInt(selectedAccountId)
+                        }),
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        onIncomeAdded(); // Lift state up to the parent
+                        onClose(); // Close the form
+                    } else {
+                        setError(result.message);
+                    }
+                } catch (err) {
+                    setError('An error occurred. Please try again.');
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
+                        <h2 className="text-2xl font-bold mb-4 text-white">Log New Income</h2>
+                        <form onSubmit={handleSubmit}>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Account</label>
+                                <select 
+                                    value={selectedAccountId} 
+                                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                                    className="w-full bg-gray-700 text-white p-2 rounded"
+                                >
+                                    <option value="">-- Select an Account --</option>
+                                    {accounts.map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Description</label>
+                                <input 
+                                    type="text" 
+                                    value={description} 
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    className="w-full bg-gray-700 text-white p-2 rounded" 
+                                    list="income-suggestions"
+                                />
+                                <datalist id="income-suggestions">
+                                    {suggestions.map(s => <option key={s} value={s} />)}
+                                </datalist>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Amount</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={amount} 
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    className="w-full bg-gray-700 text-white p-2 rounded" 
+                                />
+                            </div>
+                            {error && <p className="text-red-400 mb-4">{error}</p>}
+                            <div className="flex justify-end space-x-4">
+                                <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">
+                                    Log Income
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+        function LogExpenseForm({ accounts, onClose, onExpenseAdded, suggestions }) {
+            const [description, setDescription] = useState('');
+            const [amount, setAmount] = useState('');
+            const [selectedAccountId, setSelectedAccountId] = useState('');
+            const [error, setError] = useState('');
+
+            const handleSubmit = async (event) => {
+                event.preventDefault();
+                if (!selectedAccountId) {
+                    setError('Please select an account.');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/expense`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            description: description,
+                            amount: parseFloat(amount),
+                            account_id: parseInt(selectedAccountId)
+                        }),
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        onExpenseAdded(); // Signal to the parent to refresh data
+                        onClose();
+                    } else {
+                        setError(result.message);
+                    }
+                } catch (err) {
+                    setError('An error occurred. Please try again.');
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
+                        <h2 className="text-2xl font-bold mb-4 text-white">Log New Expense</h2>
+                        <form onSubmit={handleSubmit}>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Pay From Account</label>
+                                <select 
+                                    value={selectedAccountId} 
+                                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                                    className="w-full bg-gray-700 text-white p-2 rounded"
+                                >
+                                    <option value="">-- Select an Account --</option>
+                                    {/* Note: We don't filter accounts for expenses */}
+                                    {accounts.map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Description</label>
+                                <input 
+                                    type="text" 
+                                    value={description} 
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    className="w-full bg-gray-700 text-white p-2 rounded" 
+                                    list="expense-suggestions"
+                                />
+                                <datalist id="expense-suggestions">
+                                    {suggestions.map(s => <option key={s} value={s} />)}
+                                </datalist>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Amount</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={amount} 
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    className="w-full bg-gray-700 text-white p-2 rounded" 
+                                />
+                            </div>
+                            {error && <p className="text-red-400 mb-4">{error}</p>}
+                            <div className="flex justify-end space-x-4">
+                                <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded">
+                                    Log Expense
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
         // --- MAIN APP COMPONENT ---
         function App() {
             const [isLoading, setIsLoading] = useState(true);
@@ -94,40 +278,54 @@
             const [ledger, setLedger] = useState([]);
             const [error, setError] = useState(null);
             const [activePage, setActivePage] = useState('accounts');
+            const [isIncomeFormVisible, setIsIncomeFormVisible] = useState(false);
+            const [isExpenseFormVisible, setIsExpenseFormVisible] = useState(false);
+            const [incomeDescriptions, setIncomeDescriptions] = useState([]);
+            const [expenseDescriptions, setExpenseDescriptions] = useState([]);
 
-            useEffect(() => {
-                const fetchData = async () => {
-                    try {
-                        const [accountsRes, ledgerRes] = await Promise.all([
-                            fetch(`${API_BASE_URL}/api/accounts`),
-                            fetch(`${API_BASE_URL}/api/ledger`)
-                        ]);
+            const refreshData = async () => {
+                try {
+                    !isLoading && setIsLoading(true);
+                    const [accountsRes, ledgerRes, incomeDescRes, expenseDescRes] = await Promise.all([
+                        fetch(`${API_BASE_URL}/api/accounts`),
+                        fetch(`${API_BASE_URL}/api/ledger`),
+                        fetch(`${API_BASE_URL}/api/descriptions/income`),
+                        fetch(`${API_BASE_URL}/api/descriptions/expense`)
+                    ]);
 
-                        if (!accountsRes.ok || !ledgerRes.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        
-                        const accountsData = await accountsRes.json();
-                        const ledgerData = await ledgerRes.json();
-                        
-                        setAccounts(accountsData);
-                        setLedger(ledgerData);
-
-                    } catch (error) {
-                        setError(error.message);
-                    } finally {
-                        setIsLoading(false);
+                    if (!accountsRes.ok || !ledgerRes.ok || !incomeDescRes.ok || !expenseDescRes.ok) {
+                        throw new Error('Network response was not ok');
                     }
-                };
+                    
+                    const accountsData = await accountsRes.json();
+                    const ledgerData = await ledgerRes.json();
+                    const incomeDescData = await incomeDescRes.json();
+                    const expenseDescData = await expenseDescRes.json();
 
-                fetchData();
+                    setAccounts(accountsData);
+                    setLedger(ledgerData);
+                    setIncomeDescriptions(incomeDescData);
+                    setExpenseDescriptions(expenseDescData);
+
+                } catch (error) {
+                    setError(error.message);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleTransactionAdded = () => {
+                refreshData();
+            };
+            
+            useEffect(() => {
+                refreshData();
             }, []);
 
             if (error) {
                 return <div className="text-red-400 p-8">Error: {error}</div>;
             }
 
-            // A helper variable for button styles
             const navButtonClasses = (page) => 
                 `px-4 py-2 text-sm font-medium rounded-md ${activePage === page ? 'bg-cyan-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
 
@@ -145,7 +343,6 @@
                             <p className="text-center">Loading your financial data...</p>
                         ) : (
                             <div>
-                                {/* Navigation Buttons */}
                                 <div className="flex space-x-4 mb-6">
                                     <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>
                                         Accounts
@@ -153,18 +350,41 @@
                                     <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>
                                         Ledger
                                     </button>
+                                    <div className="ml-auto flex space-x-2">
+                                        <button onClick={() => setIsIncomeFormVisible(true)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-md">
+                                            + Add Income
+                                        </button>
+                                        <button onClick={() => setIsExpenseFormVisible(true)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-md">
+                                            - Add Expense
+                                        </button>
+                                    </div>
                                 </div>
 
-                                {/* Conditional Rendering of the Active Page */}
                                 {activePage === 'accounts' && <AccountsList accounts={accounts} />}
                                 {activePage === 'ledger' && <LedgerView ledger={ledger} />}
                             </div>
                         )}
                     </main>
+
+                    {isIncomeFormVisible && 
+                        <LogIncomeForm 
+                            accounts={accounts.filter(acc => acc.type !== 'CREDIT_CARD')} 
+                            onClose={() => setIsIncomeFormVisible(false)} 
+                            onIncomeAdded={handleTransactionAdded} 
+                            suggestions={incomeDescriptions}
+                        />
+                    }
+                    {isExpenseFormVisible && 
+                        <LogExpenseForm 
+                            accounts={accounts} 
+                            onClose={() => setIsExpenseFormVisible(false)} 
+                            onExpenseAdded={handleTransactionAdded} 
+                            suggestions={expenseDescriptions}
+                        />
+                    }
                 </div>
             );
         }
-
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>

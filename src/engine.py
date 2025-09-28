@@ -138,7 +138,7 @@ class BusinessSimulator:
     def get_accounts_list(self):
         """Returns the dictionary of all loaded accounts"""
         return self.accounts
-    
+
     def get_ledger_entries(self, limit=50):
         """Fetches the most recent financial ledger entries from the database."""
         conn, cursor = self._get_db_connection()
@@ -146,7 +146,7 @@ class BusinessSimulator:
             # Fetches the last 50 entries, ordered with the most recent first.
             # This provides a reverse-chronological history of transactions.
             query = (
-                "SELECT transaction_date, description, account, debit, credit "
+                "SELECT entry_id, transaction_date, description, account, debit, credit "
                 "FROM financial_ledger "
                 "ORDER BY entry_id DESC "
                 "LIMIT %s"
@@ -162,6 +162,26 @@ class BusinessSimulator:
                 cursor.close()
                 conn.close()
 
+    def get_unique_descriptions(self, transaction_type='expense'):
+        """Fetches a unique list of descriptions for either income or expenses."""
+        conn, cursor = self._get_db_connection()
+        try:
+            if transaction_type == 'income':
+                # For income, find descriptions where 'Income' was credited
+                query = "SELECT DISTINCT description FROM financial_ledger WHERE account = 'Income' AND description != '' ORDER BY description"
+            else:
+                # For expenses, find descriptions where 'Expenses' was debited
+                query = "SELECT DISTINCT description FROM financial_ledger WHERE account = 'Expenses' AND description != '' ORDER BY description"
+            
+            cursor.execute(query)
+            # This returns a simple list of strings, e.g., ['Groceries', 'Gas', 'Paycheck']
+            descriptions = [row['description'] for row in cursor.fetchall()]
+            return descriptions
+        finally:
+            if 'conn' in locals() and conn.is_connected():
+                cursor.close()
+                conn.close()
+    
     # --- Public API Methods (Actions) ---
     def accept_loan(self, offer_id):
         if offer_id != 1: return False, "Invalid loan offer."
