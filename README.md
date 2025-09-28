@@ -2,46 +2,32 @@
 
 ## Project Objective
 
-This project is a personal financial management application built on the principles of double-entry accounting. The goal is to create a robust tracking system for personal use that can eventually be made public for other users.
-
-This is open source and you can download it yourself and run it locally right now.
-
+Perfect Books is a full-stack personal finance application designed to provide robust, accurate financial tracking based on the core principles of double-entry accounting. The backend is powered by a custom Python engine and a MySQL database, exposed through a Flask REST API. The frontend is an interactive and responsive dashboard built with React and styled with Tailwind CSS. The primary goal is to create a powerful, self-hosted tool for managing accounts, tracking income and expenses, and providing a clear, real-time view of one's financial health.
 
 ## Table of Contents
 - [Core Features](#core-features)
 - [Tech Stack](#tech-stack)
-- [Dashboard & Analysis](#dashboard--analysis)
+- [Web Interface](#web-interface)
+- [BI-Ready Database & Analytics](#bi-ready-database--analytics)
 - [Setup Instructions](#setup-instructions)
 - [Database Schema](#database-schema)
+- [Project Structure](#project-structure)
 
 ## Core Features
 
-### Simulation Engine
-
-* **Double-Entry Accounting:** Every transaction generates corresponding entries in a financial ledger, ensuring that debits and credits always balance. This provides a robust and auditable record of all financial activity.
-* **Multi-Account Management:** Track balances across all your financial accounts, including checking, saving, credit cards, and cash.
-* **Income & Expense Tracking:** Log all sources of income and every expense, whether recurring (like rent) or a one-time purchase (like groceries), to get a clear picture of your cash flow.
-* **Debt Management:** The system is designed to monitor loan balances and track your progress as you pay them down over time.
-* **Persistent State:** The application is state is stored in a MySQL database, allowing you to close the application and pick up right where you left off.
-
-### User Interfaces & Analysis
-
-* **Enhanced Web UI (v2):** A comprehensive React-based dashboard with multiple pages for inventory management, supplier relationships, marketing campaigns, expense tracking, and financial analysis.
-* **Real-time Debug Tools:** Built-in debugging panels to monitor sales activity, inventory changes, and system performance.
-* **Terminal Application:** A classic command-line interface provides an alternative way to interact with the application.
-* **BI-Ready Schema:** The normalized MySQL database is designed for direct connection with business intelligence tools like Power BI, enabling the creation of live, interactive dashboards.
-
-## Design Philosophy
-
-This project is built with a modular design. The core accounting logic in the `engine.py` file is separated from the web interface (`api.py`) and the database schema (`setup.py`). This separation makes it easy to add new features or even pivot the application's purpose in the future, such as re-introducing business-specific features like inventory management.
+* **Double-Entry Accounting:** Every transaction generates corresponding debit and credit entries in an immutable ledger, ensuring a robust and auditable record of all financial activity.
+* **Multi-Account Management:** Track balances across all your financial accounts, including checking, savings, credit cards, and cash.
+* **Income & Expense Tracking:** Log all sources of income and every expense, whether recurring or a one-time purchase, to get a clear picture of cash flow.
+* **REST API Backend:** A Flask-based API provides the data to the frontend, with a clear separation between the core logic and the user interface.
+* **Persistent State:** The application state is stored in a MySQL database, allowing you to close the application and pick up right where you left off.
 
 ## Tech Stack
 
 * **Backend:** Python 3
 * **Database:** MySQL
-* **Frontend:** React with Tailwind CSS for styling.
+* **API Framework:** Flask
+* **Frontend:** React, Tailwind CSS
 * **Data Analysis:** Microsoft Power BI
-* **Key Libraries:** `mysql-connector-python`, `flask`, `flask-cors`
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
@@ -49,49 +35,37 @@ This project is built with a modular design. The core accounting logic in the `e
 ![Power BI](https://img.shields.io/badge/Power%20BI-F2C811?style=for-the-badge&logo=powerbi&logoColor=black)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
+## Web Interface
 
-## Dashboard & Analysis
+*A new, interactive dashboard built with React is under development. A preview will be available here soon.*
 
-The data generated by the simulation is visualized in a multi-page Power BI dashboard designed to provide a comprehensive business overview. The web UI provides direct operational control over the business.
+## BI-Ready Database & Analytics
 
-### Web Interface (Interactive Dashboard)
+A core design philosophy of Perfect Books is data accessibility. The application's normalized MySQL database is structured to be "BI-Ready," allowing for a direct connection with business intelligence tools like Power BI, Tableau, or others. This enables the creation of live, interactive dashboards for deep financial analysis.
 
-*The enhanced v2 web interface featuring real-time inventory management, supplier relationships, marketing campaigns, and financial tracking.*
+### Demonstration Dashboards (Power BI)
 
-### Power BI Analytics
-These dashboards are currently in the logic prototyping stage. They will be formatted and finalized as the project nears completion.
+The following dashboards were built in Microsoft Power BI and connect directly to the application's database, providing a real-time analytical layer on top of the core transaction engine.
 
-## 1. The Executive Summary Dashboard
-
-Objective: To provide a high-level, at-a-glance overview of the business's overall financial health and profitability. This dashboard is designed for strategic decision-making, answering the fundamental questions: "Are we profitable?" and "How is our financial position trending over time?"
-
-* **Key Features & Insights**:
-Headline KPIs: Four prominent cards display the most critical real-time metrics: Cash on Hand, Accounts Payable (AP) Due, Gross Profit, and Net Profit.
-
-* **Monthly Profit & Loss**: A clustered column and line chart that tracks Total Revenue against Operating Expenses on a monthly basis. The integrated Net Profit line provides a clear visual trend of the company's bottom-line performance.
-
-* **Operating Expense Breakdown**: An interactive donut chart that details the composition of the company's costs. It reveals the underlying structure of the operating expenses, highlighting major contributors like "Warehouse Rent" (78.69%).
-
-* **Working Capital Trend**: A sophisticated combination chart that plots the company's liquid Cash Balance against its short-term liabilities (Historical AP Balance). This visual is key for analyzing liquidity and managing cash flow effectively.
-
-* **Date Slicer**: A full-report slicer allows the user to dynamically filter the entire dashboard to analyze performance over specific time periods, from a single quarter to the entire life of the business.
-
-## 2. The Supply Chain & Operations Dashboard
-
-
-![Sales Tab](screenshots/supply&operations9.21.25.jpg)
-Objective: To provide deep, actionable insights into the operational side of the business. This dashboard connects physical activities—like ordering from vendors and managing stock—to their direct financial impact, helping to optimize inventory and supplier relationships.
+#### 1. The Executive Summary Dashboard
+![Executive Summary](screenshots/v1reactDashboard.gif)
+**Objective**: To provide a high-level, at-a-glance overview of the business's overall financial health and profitability. This dashboard is designed for strategic decision-making, answering the fundamental questions: "Are we profitable?" and "How is our financial position trending over time?"
 
 * **Key Features & Insights**:
-Real-Time Validation KPIs: This dashboard includes cards for Total Debits and Total Credits. The centerpiece is an Accounting Equation card (Total Debits - Total Credits) that resolves to $0.00, providing a definitive, real-time validation of the simulation's double-entry accounting system integrity. A Company Equity card shows the business's true net worth.
+    * **Headline KPIs:** Four prominent cards display the most critical real-time metrics: Cash on Hand, Accounts Payable (AP) Due, Gross Profit, and Net Profit.
+    * **Monthly Profit & Loss:** A clustered column and line chart that tracks Total Revenue against Operating Expenses on a monthly basis. The integrated Net Profit line provides a clear visual trend of the company's bottom-line performance.
+    * **Operating Expense Breakdown:** An interactive donut chart that details the composition of the company's costs, revealing underlying structure and major contributors.
+    * **Working Capital Trend:** A sophisticated combination chart that plots the liquid Cash Balance against short-term liabilities (Historical AP Balance) to analyze liquidity and manage cash flow.
 
-* **Vendor Scorecard**: A detailed table that evaluates supplier performance based on Average Lead Time and On-Time Delivery %, allowing for data-driven decisions on which vendors to prioritize.
+#### 2. The Supply Chain & Operations Dashboard
+![Operations Dashboard](screenshots/supply&operations9.21.25.jpg)
+**Objective**: To provide deep, actionable insights into the operational side of the business. This dashboard connects physical activities—like ordering from vendors and managing stock—to their direct financial impact.
 
-* **Live Stock Levels**: A table provides a real-time count of Quantity on Hand and Inventory Value for each product, serving as the central tool for making purchasing and stock management decisions.
-
-* **Assets & Equity Chart**: A powerful stacked column and line chart that visualizes the accounting equation over time. The stacked columns show the composition of Total Assets (Cash + Inventory), while the integrated line shows the growth of Company Equity (Assets - Liabilities).
-
-* **Interactive Slicers**: The entire report can be filtered by Vendor or product Category, enabling deep-dive analysis into the performance of specific product lines or the efficiency of individual suppliers.
+* **Key Features & Insights**:
+    * **Real-Time Validation KPIs:** Includes cards for Total Debits and Total Credits, with a centerpiece Accounting Equation card (Total Debits - Total Credits) that resolves to $0.00, providing definitive, real-time validation of the double-entry system's integrity.
+    * **Vendor Scorecard:** A detailed table that evaluates supplier performance based on Average Lead Time and On-Time Delivery %, allowing for data-driven decisions.
+    * **Live Stock Levels:** A table provides a real-time count of Quantity on Hand and Inventory Value for each product, serving as a central tool for stock management.
+    * **Assets & Equity Chart:** A stacked column and line chart that visualizes the accounting equation over time, showing the composition of Total Assets (Cash + Inventory) against the growth of Company Equity.
 
 ## Setup Instructions
 
@@ -103,65 +77,64 @@ Real-Time Validation KPIs: This dashboard includes cards for Total Debits and To
 ### 1. Database Setup
 
 1.  Ensure your MySQL server is running.
-2.  Update the `DB_CONFIG` dictionary in `/src/setup.py`, `/src/api.py`, and '/srv/engine.py with your MySQL credentials (user, password, host, port).
+2.  Create a `.env` file in the project's root directory and populate it with your MySQL credentials:
+    ```
+    DB_HOST=your_host
+    DB_PORT=your_port
+    DB_USER=your_user
+    DB_PASSWORD=your_password
+    DB_NAME=perfect_books
+    ```
 
 ### 2. Install Dependencies
 
-Install the required Python package using the `requirements.txt` file:
+Install the required Python packages using the `requirements.txt` file:
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 3. Initialize the Database
-Run the setup script **once** from your terminal. This will create the `digital_harvest` database, build the required tables, and populate the initial product catalog.
+Run the setup script **once** from your terminal. This will create the `perfect_books` database and all required tables.
 ```bash
 python src/setup.py
 ```
-
 *Note: This script will completely drop and recreate the database each time it is run.*
 
-### 4. Run the Simulation
-You can run either the Web UI or the Terminal version.
+### 4. Running the Application
 
-**To use the Web UI v2 (Recommended):**
-1. Start the backend API server:
+**To use the Web Interface (Recommended):**
+1. Start the backend API server in a terminal:
    ```bash
    python src/api.py
    ```
-2. Start the local web server (in a separate terminal):
-   ```bash
-   cd path/to/your/Perfect_Books
-   python -m http.server 8080
-   ```
-   You should see: `Serving HTTP on 0.0.0.0 port 8080 (http://0.0.0.0:8080/) ...`
-3. Open your web browser and navigate to:
-   ```
-   http://localhost:8080/index.html
-   ```
+2. Open the `index.html` file directly in your web browser.
 
 **To use the Terminal Application:**
 ```bash
 python src/cli.py
 ```
 
-**Note:** The web interfaces require both the API server (`api.py`) and the local web server to be running simultaneously in separate terminal windows.
-
 ## Database Schema
 
 | Table Name | Description |
 | :--- | :--- |
-| `products` & `categories` | Stores the product catalog, including metadata used by the sales simulation AI. |
-| `inventory_ledger` | A perpetual log of all inventory movements. Each entry records the change in quantity, the value of the transaction, and the resulting quantity on hand. |
-| `financial_ledger` | A classic double-entry accounting ledger. Every business event creates corresponding debit and credit entries, ensuring the accounting equation remains in balance. |
+| `accounts` | Stores user-defined financial accounts (e.g., Checking, Savings) and their real-time balances. |
+| `financial_ledger` | An immutable double-entry accounting ledger. Every event creates corresponding debit and credit entries. |
+| `recurring_expenses` | Stores recurring bills and subscriptions for automated processing. |
+| `loans` | Tracks loan details, including principal, interest, and payment schedules. |
 
 ## Project Structure
 
 ```
-digital-harvest/
-├── src/           # Python files to run the backend
-│   ├── engine.py  # Core business simulation engine
-│   ├── api.py     # Flask REST API
-│   ├── cli.py     # Terminal interface
-│   └── setup.py   # Database initialization
-├── index.html     # Enhanced web interface with dashboard (recommended)
+perfect-books/
+├── src/               # Core Python application source code
+│   ├── engine.py      # Main application engine with all business logic
+│   ├── api.py         # Flask REST API server
+│   ├── cli.py         # Command-line interface
+│   └── setup.py       # Database initialization script
+├── .env               # Stores database credentials (not committed to Git)
+├── .gitignore         # Specifies files for Git to ignore
+├── index.html         # React-based web interface
+├── requirements.txt   # List of Python dependencies
+└── README.md          # This file
 ```

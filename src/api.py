@@ -52,17 +52,31 @@ def get_status():
 @check_sim
 def get_sales_history():
     return jsonify(sim.get_sales_history())
-    
+
+@app.route('/api/accounts', methods=['GET'])
+@check_sim
+def get_accounts():
+    """Endpoint to get all user accounts and their balance"""
+    # We use list() to convert the dictionary values into a list for easier use in React
+    accounts_list = list(sim.get_accounts_list().values())
+    return jsonify(accounts_list)
+
+@app.route('/api/ledger', methods=['GET'])
+@check_sim
+def get_ledger():
+    """Endpoint to get ther most recent transaction ledger entries."""
+    return jsonify(sim.get_ledger_entries())
+
 @app.route('/api/expenses', methods=['GET'])
 @check_sim
 def get_expenses():
     return jsonify(sim.get_all_expenses())
-    
+
 @app.route('/api/loans/offers', methods=['GET'])
 @check_sim
 def get_loan_offers():
     return jsonify(sim.get_loan_offers())
-    
+
 # --- POST Routes (Actions) ---
 
 @app.route('/api/advance_time', methods=['POST'])
