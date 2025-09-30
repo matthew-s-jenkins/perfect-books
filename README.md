@@ -2,8 +2,6 @@
 
 ## Project Objective
 
-![Business UI Demo](screenshots\v3reactDashboard.gif)
-
 Perfect Books is a full-stack personal finance application designed to provide robust, accurate financial tracking based on the core principles of double-entry accounting. The backend is powered by a custom Python engine and a MySQL database, exposed through a Flask REST API. The frontend is an interactive and responsive single-page application built with React. The primary goal is to create a powerful, self-hosted, **multi-user** tool for managing accounts, tracking income and expenses, and providing a clear, real-time view of one's financial health.
 
 ## Table of Contents
@@ -49,6 +47,8 @@ Perfect Books is a full-stack personal finance application designed to provide r
 * **Data Analysis:** Microsoft Power BI (or any BI tool)
 
 ## Web Interface
+
+![Business UI Demo](screenshots/v3reactDashboard.gif)
 
 ## Analytics-Ready Database & Analytics
 
