@@ -2,10 +2,9 @@ import os
 from dotenv import load_dotenv
 import mysql.connector
 import datetime
-import math
-import random
 import time
 from decimal import Decimal
+import bcrypt
 
 load_dotenv()
 
@@ -19,426 +18,603 @@ DB_CONFIG = {
 }
 
 class BusinessSimulator:
-    # --- Core/Setup Methods ---
     def __init__(self):
-        self.accounts = {}
-        self.current_date = None
-        self._load_accounts_and_date()
+        pass
     
     def _get_db_connection(self):
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn, conn.cursor(dictionary=True, buffered=True)
 
-    def _load_accounts_and_date(self):
-        """Loads all accounts and the last transaction date from the database."""
-        conn, cursor = self._get_db_connection()
-        try:
-            # Load all accounts into the self.accounts dictionary
-            cursor.execute("SELECT * FROM accounts")
-            for row in cursor.fetchall():
-                self.accounts[row['account_id']] = {
-                    'name': row['name'],
-                    'type': row['type'],
-                    'balance': row['balance']
-                }
-            print(f"Loaded {len(self.accounts)} account(s),")
-
-            # Find the most recent transaction date to set as the current date
-            cursor.execute("SELECT MAX(transaction_date) AS last_date FROM financial_ledger")
-            result = cursor.fetchone()
-            if result and result['last_date']:
-                self.current_date = result['last_date']
-            else:
-                # If there are no transactions, it's a fresh start, use today's date
-                self.current_date = datetime.datetime.now()
-            print(f"Set current date to {self.current_date.date()}.")
-        
-        except mysql.connector.Error as err:
-            print(f"Error loading state: {err}")
-            # Sets defaults if loading fails
-            self.accounts = {}
-            self.current_date = datetime.datetime.now()
-        finally:
-            if 'conn' in locals() and conn.is_connected():
-                cursor.close()
-                conn.close()
-
-    # --- Public API Methods (Data Retrieval) ---
-    def get_status_summary(self):
-        # Calculate total cash from asset accounts (Checking, Savings, Cash)
-        total_cash = 0
-        for acc_id, acc_data in self.accounts.items():
-            if acc_data['type'] in ['CHECKING', 'SAVINGS', 'CASH']:
-                total_cash += acc_data['balance']
-        
-        conn, cursor = self._get_db_connection()
-        loans_query = "SELECT SUM(outstanding_balance) as total_debt FROM loans WHERE status = 'ACTIVE'"
-        cursor.execute(loans_query)
-        debt_result = cursor.fetchone()
-        
-        summary = {
-            'cash': float(total_cash),
-            'date': self.current_date,
-            'total_debt': float(debt_result['total_debt']) if debt_result and debt_result['total_debt'] else 0.0,
-        }
-        cursor.close()
-        conn.close()
-        return summary
-    
-    def get_sales_history(self):
-        conn, cursor = self._get_db_connection()
-        days_elapsed = (self.current_date - self.simulation_start_date).days
-        if days_elapsed < 30:
-            start_date = self.simulation_start_date.date()
-            num_days = days_elapsed if days_elapsed > 0 else 1
-        else:
-            start_date = (self.current_date - datetime.timedelta(days=30)).date()
-            num_days = 30
-        query = ("SELECT DATE(transaction_date) as sale_date, SUM(credit) as daily_revenue "
-                 "FROM financial_ledger "
-                 "WHERE account = 'Income' AND transaction_date >= %s "
-                 "GROUP BY DATE(transaction_date) "
-                 "ORDER BY sale_date ASC")
-        cursor.execute(query, (start_date,))
-        sales_data = {row['sale_date']: float(row['daily_revenue']) for row in cursor.fetchall()}
-        full_history = []
-        for i in range(num_days):
-            current_day = start_date + datetime.timedelta(days=i)
-            if current_day >= self.current_date.date(): break
-            full_history.append({
-                'sale_date': current_day,
-                'daily_revenue': sales_data.get(current_day, 0.0)
-            })
-        cursor.close()
-        conn.close()
-        return full_history
-
-    def get_all_expenses(self):
-        conn, cursor = self._get_db_connection()
-        query = "SELECT description, amount, frequency, account FROM recurring_expenses ORDER BY amount DESC"
-        cursor.execute(query)
-        results = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return results
-
-    def get_loan_offers(self):
-        principal = Decimal("50000.00")
-        annual_rate = Decimal("0.06")
-        years = 3
-        num_payments = years * 12
-        monthly_rate = annual_rate / 12
-        if monthly_rate > 0:
-            monthly_payment = (principal * monthly_rate * ((1 + monthly_rate) ** num_payments)) / (((1 + monthly_rate) ** num_payments) - 1)
-        else:
-            monthly_payment = principal / num_payments
-        offer = {"id": 1, "principal": float(principal), "apr": float(annual_rate * 100), "term_months": num_payments, "monthly_payment": float(round(monthly_payment, 2))}
-        return [offer]
-
-    def get_accounts_list(self):
-        """Returns the dictionary of all loaded accounts"""
-        return self.accounts
-
-    def get_ledger_entries(self, limit=50):
-        """Fetches the most recent financial ledger entries from the database."""
-        conn, cursor = self._get_db_connection()
-        try:
-            # Fetches the last 50 entries, ordered with the most recent first.
-            # This provides a reverse-chronological history of transactions.
-            query = (
-                "SELECT entry_id, transaction_date, description, account, debit, credit "
-                "FROM financial_ledger "
-                "ORDER BY entry_id DESC "
-                "LIMIT %s"
-            )
-            cursor.execute(query, (limit,))
-            results = cursor.fetchall()
-            return results
-        except mysql.connector.Error as err:
-            print(f"Database error fetching ledger: {err}")
-            return [] # Return an empty list on error
-        finally:
-            if 'conn' in locals() and conn.is_connected():
-                cursor.close()
-                conn.close()
-
-    def get_unique_descriptions(self, transaction_type='expense'):
-        """Fetches a unique list of descriptions for either income or expenses."""
-        conn, cursor = self._get_db_connection()
-        try:
-            if transaction_type == 'income':
-                # For income, find descriptions where 'Income' was credited
-                query = "SELECT DISTINCT description FROM financial_ledger WHERE account = 'Income' AND description != '' ORDER BY description"
-            else:
-                # For expenses, find descriptions where 'Expenses' was debited
-                query = "SELECT DISTINCT description FROM financial_ledger WHERE account = 'Expenses' AND description != '' ORDER BY description"
-            
-            cursor.execute(query)
-            # This returns a simple list of strings, e.g., ['Groceries', 'Gas', 'Paycheck']
-            descriptions = [row['description'] for row in cursor.fetchall()]
-            return descriptions
-        finally:
-            if 'conn' in locals() and conn.is_connected():
-                cursor.close()
-                conn.close()
-    
-    # --- Public API Methods (Actions) ---
-    def accept_loan(self, offer_id):
-        if offer_id != 1: return False, "Invalid loan offer."
-        conn, cursor = self._get_db_connection()
-        cursor.execute("SELECT loan_id FROM loans WHERE status = 'ACTIVE'")
-        if cursor.fetchone():
-            cursor.close(); conn.close()
-            return False, "An active loan already exists."
-        offers = self.get_loan_offers()
-        offer = offers[0]
-        principal = Decimal(offer['principal'])
-        monthly_payment = Decimal(offer['monthly_payment'])
-        self.cash += principal
-        today = self.current_date.date()
-        next_month = (today.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
-        try:
-            loan_query = "INSERT INTO loans (principal_amount, outstanding_balance, interest_rate, monthly_payment, next_payment_date, status) VALUES (%s, %s, %s, %s, %s, 'ACTIVE')"
-            cursor.execute(loan_query, (principal, principal, offer['apr']/100, monthly_payment, next_month))
-            loan_id = cursor.lastrowid
-            uuid = f"loan-{loan_id}"
-            fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
-            cursor.execute(fin_query, (uuid, self.current_date, 'Cash', 'Loan principal received', principal, 0))
-            cursor.execute(fin_query, (uuid, self.current_date, 'Loans Payable', 'Loan liability created', 0, principal))
-            self._save_state()
-            conn.commit()
-            return True, "Loan accepted and funds added to cash."
-        except Exception as e:
-            conn.rollback()
-            return False, f"Database error: {e}"
-        finally:
-            cursor.close(); conn.close()
-
-    def add_recurring_expense(self, description, account, amount, frequency='MONTHLY'):
-        """Adds a new recurring expense to the database"""
-        try:
-            conn, cursor = self._get_db_connection()
-            query = "INSERT INTO recurring_expenses (description, account, amount, frequency) VALUES (%s, %s, %s, %s)"
-            cursor.execute(query, (description, account, amount, frequency))
-            conn.commit()
-            return True, f"Successfully added expense: {description}"
-        except mysql.connector.Error as err:
-            conn.rollback()
-            return False, f"Database error: {err}"
-        finally:
-            if 'conn' in locals() and conn.is_connected():
-                cursor.close()
-                conn.close()
-
-    def log_income(self, account_id, description, amount):
-        """Logs an income transaction to a specific account."""
-        try:
-            # 1. Input Validation
-            amount = Decimal(amount)
-            if amount <= 0:
-                return False, "Income amount must be positive."
-            if account_id not in self.accounts:
-                return False, "Invalid account specified."
-
-            # 2. Update Balance in Memory
-            self.accounts[account_id]['balance'] += amount
-            
-            # 3. Get Database Connection & Account Name
-            conn, cursor = self._get_db_connection()
-            account_name = self.accounts[account_id]['name']
-            uuid = f"income-{int(time.time())}-{account_id}"
-
-            # 4. Record Double-Entry Transaction
-            fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
-            # Debit the specific asset account (e.g., 'Chase Checking')
-            cursor.execute(fin_query, (uuid, self.current_date, account_name, description, amount, 0))
-            # Credit Income (which increases Equity)
-            cursor.execute(fin_query, (uuid, self.current_date, 'Income', description, 0, amount))
-
-            # 5. Persist the New Balance to the Database
-            update_query = "UPDATE accounts SET balance = %s WHERE account_id = %s"
-            cursor.execute(update_query, (self.accounts[account_id]['balance'], account_id))
-
-            # 6. Finalize Transaction
-            conn.commit()
-            return True, f"Successfully logged income to '{account_name}': ${amount:,.2f}"
-        
-        except Exception as e:
-            if 'conn' in locals() and conn.is_connected():
-                conn.rollback()
-            # If something fails, revert the balance change in memory
-            if 'account_id' in locals() and account_id in self.accounts:
-                self.accounts[account_id]['balance'] -= amount
-            return False, f"An error occurred while logging income: {e}"
-        
-        finally:
-            if 'conn' in locals() and conn.is_connected():
-                cursor.close()
-                conn.close()
-    
-    def log_expense(self, account_id, description, amount):
-        """Logs a one time expense to a specific account."""
-        try:
-            # 1. Input Validation
-            amount = Decimal(amount)
-            if amount <= 0:
-                return False, "Expense amount must be positive."
-            if account_id not in self.accounts:
-                return False, "Invalid account specified."
-
-            account_type = self.accounts[account_id]['type']
-            current_balance = self.accounts[account_id]['balance']
-
-            # 2. Sufficient Funds Check (for non-credit accounts)
-            if account_type != 'CREDIT_CARD' and current_balance < amount:
-                return False, f"Insufficient funds. Balance: ${current_balance:.2f}"
-
-            # 3. Update Balance in Memory
-            self.accounts[account_id]['balance'] -= amount
-            
-            # 4. Get Database Connection & Account Name
-            conn, cursor = self._get_db_connection()
-            account_name = self.accounts[account_id]['name']
-            uuid = f"expense-{int(time.time())}-{account_id}"
-
-            # 5. Record Double-Entry Transaction
-            fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
-            # Debit a general 'Expenses' account (which reduces equity)
-            cursor.execute(fin_query, (uuid, self.current_date, 'Expenses', description, amount, 0))
-            # Credit the specific asset/liability account used for payment
-            cursor.execute(fin_query, (uuid, self.current_date, account_name, description, 0, amount))
-
-            # 6. Persist the New Balance to the Database
-            update_query = "UPDATE accounts SET balance = %s WHERE account_id = %s"
-            cursor.execute(update_query, (self.accounts[account_id]['balance'], account_id))
-
-            # 7. Finalize Transaction
-            conn.commit()
-            return True, f"Successfully logged expense from '{account_name}': ${amount:,.2f}"
-        
-        except Exception as e:
-            if 'conn' in locals() and conn.is_connected():
-                conn.rollback()
-            # If something fails, revert the balance change in memory
-            if 'account_id' in locals() and account_id in self.accounts:
-                self.accounts[account_id]['balance'] += amount
-            return False, f"An error occurred while logging expense: {e}"
-        
-        finally:
-            if 'conn' in locals() and conn.is_connected():
-                cursor.close()
-                conn.close()
-
-    def auto_advance_time(self):
-        """Calculates elapsed days and runs the simulation to catch up to today."""
-        today = datetime.datetime.now().date()
-        last_run_date = self.current_date.date()
-
-        if today > last_run_date:
-            days_to_advance = (today - last_run_date).days
-            print(f"Catching up... advancing time by {days_to_advance} day(s).")
-            time.sleep(2) # Pause 2 seconds for effect
-            return self.advance_time(days_to_advance)
-        return None # Return nothing if no advance time was needed
-
-    def advance_time(self, days_to_advance=1):
-        log_messages = []
-
-        for i in range(days_to_advance):
-            log_messages.extend(self._apply_recurring_expenses())
-            log_messages.extend(self._process_loan_payments())
-                        
-            self.current_date += datetime.timedelta(days=1)
-
-        print("✅ Simulation advance complete.")
-        return {'log': log_messages}
-
-    # --- Internal Processing Methods (Helpers) ---
-    def _process_loan_payments(self):
-        logs = []
-        conn, cursor = self._get_db_connection()
-        query = "SELECT * FROM loans WHERE status = 'ACTIVE' AND next_payment_date <= %s"
-        cursor.execute(query, (self.current_date.date(),))
-        due_loans = cursor.fetchall()
-        for loan in due_loans:
-            payment = loan['monthly_payment']
-            if self.cash < payment:
-                logs.append(f"🚨 LOAN PAYMENT FAILED! Insufficient cash for loan #{loan['loan_id']}.")
-                continue
-            self.cash -= payment
-            monthly_interest_rate = loan['interest_rate'] / 12
-            interest_paid = loan['outstanding_balance'] * Decimal(monthly_interest_rate)
-            principal_paid = payment - interest_paid
-            new_balance = loan['outstanding_balance'] - principal_paid
-            uuid = f"loan-payment-{loan['loan_id']}-{self.current_date.date()}"
-            fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
-            cursor.execute(fin_query, (uuid, self.current_date, 'Loans Payable', 'Loan principal payment', principal_paid, 0))
-            cursor.execute(fin_query, (uuid, self.current_date, 'Interest Expense', 'Loan interest payment', interest_paid, 0))
-            cursor.execute(fin_query, (uuid, self.current_date, 'Cash', 'Loan payment made', 0, payment))
-            next_payment_date = (loan['next_payment_date'] + datetime.timedelta(days=32)).replace(day=1)
-            status = 'ACTIVE'
-            if new_balance <= 0:
-                new_balance = Decimal('0.00'); status = 'PAID'
-                logs.append(f"🎉 Loan #{loan['loan_id']} has been fully paid off!")
-            update_query = "UPDATE loans SET outstanding_balance = %s, next_payment_date = %s, status = %s WHERE loan_id = %s"
-            cursor.execute(update_query, (new_balance, next_payment_date, status, loan['loan_id']))
-            logs.append(f"💸 Loan payment of ${payment:,.2f} made. New balance: ${new_balance:,.2f}.")
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return logs
-
-    def _apply_recurring_expenses(self):
-        logs = []
-        conn, cursor = self._get_db_connection()
-        query = "SELECT * FROM recurring_expenses WHERE last_processed_date IS NULL OR last_processed_date < %s"
-        cursor.execute(query, (self.current_date.date(),))
-        due_expenses = cursor.fetchall()
-        today = self.current_date.date()
-        for exp in due_expenses:
-            process = False
-            last_processed = exp['last_processed_date']
-            if exp['frequency'] == 'MONTHLY' and today.day == 1 and (last_processed is None or last_processed.month < today.month or last_processed.year < today.year):
-                process = True
-            if process and self.cash >= exp['amount']:
-                self.cash -= exp['amount']
-                uuid = f"exp-{self.current_date.date()}-{exp['expense_id']}"
-                fin_query = "INSERT INTO financial_ledger (transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s)"
-                cursor.execute(fin_query, (uuid, self.current_date, exp['account'], exp['description'], exp['amount'], 0))
-                cursor.execute(fin_query, (uuid, self.current_date, 'Cash', exp['description'], 0, exp['amount']))
-                cursor.execute("UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s", (today, exp['expense_id']))
-                logs.append(f"💸 Paid recurring expense: {exp['description']} (${exp['amount']})")
-            elif process and self.cash < exp['amount']:
-                logs.append(f"🚨 WARNING: Could not pay recurring expense {exp['description']} due to insufficient cash.")
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return logs
-
-    def verify_books_balance(self):
-        """Verify that total debits equal total credits"""
-        conn, cursor = self._get_db_connection()
-        query = "SELECT SUM(debit) as total_debits, SUM(credit) as total_credits FROM financial_ledger"
-        cursor.execute(query)
+    def _get_user_current_date(self, cursor, user_id):
+        cursor.execute(
+            "SELECT MAX(transaction_date) AS last_date FROM financial_ledger WHERE user_id = %s",
+            (user_id,)
+        )
         result = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        if result and result['last_date']:
+            return result['last_date']
+        return datetime.datetime.now()
+
+    # --- USER AUTHENTICATION METHODS ---
+    def login_user(self, username, password):
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT user_id, username, password_hash FROM users WHERE username = %s", (username,))
+            user_data = cursor.fetchone()
+            if not user_data:
+                return None, "Invalid username or password."
+            
+            password_bytes = password.encode('utf-8')
+            password_hash_bytes = user_data['password_hash'].encode('utf-8')
+
+            if bcrypt.checkpw(password_bytes, password_hash_bytes):
+                return user_data, "Login successful."
+            else:
+                return None, "Invalid username or password."
         
-        if result:
-            debits = result['total_debits'] or 0
-            credits = result['total_credits'] or 0
-            return abs(debits - credits) < 0.01  # Allow for small rounding differences
-        return False
+        except Exception as e:
+            return None, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def register_user(self, username, password):
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT user_id FROM users WHERE username = %s", (username,))
+            if cursor.fetchone():
+                return False, "Username already exists.", None
+
+            password_bytes = password.encode('utf-8')
+            salt = bcrypt.gensalt()
+            password_hash = bcrypt.hashpw(password_bytes, salt)
+
+            cursor.execute(
+                "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+                (username, password_hash.decode('utf-8'))
+            )
+            new_user_id = cursor.lastrowid
+            conn.commit()
+            return True, "User registered successfully.", new_user_id
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}", None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def check_user_has_accounts(self, user_id):
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT 1 FROM accounts WHERE user_id = %s LIMIT 1", (user_id,))
+            return cursor.fetchone() is not None
+        finally:
+            cursor.close()
+            conn.close()
+
+
+    # --- DATA RETRIEVAL METHODS ---
+    def get_status_summary(self, user_id):
+        conn, cursor = self._get_db_connection()
+        try:
+            accounts = self.get_accounts_list(user_id)
+            total_cash = sum(acc['balance'] for acc in accounts if acc['type'] in ['CHECKING', 'SAVINGS', 'CASH'])
+            current_date = self._get_user_current_date(cursor, user_id)
+            summary = { 'cash': float(total_cash), 'date': current_date }
+            return summary
+        finally:
+            cursor.close()
+            conn.close()
     
-    def _add_business_days(self, start_date, business_days):
-        """Add business days (Mon-Fri) to a date, skipping weekends"""
-        current_date = start_date
-        days_added = 0
+    def get_accounts_list(self, user_id):
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT * FROM accounts WHERE user_id = %s AND type != 'EQUITY' ORDER BY name", (user_id,))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_ledger_entries(self, user_id, transaction_limit=20):
+        conn, cursor = self._get_db_connection()
+        try:
+            query = (
+                "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit "
+                "FROM financial_ledger l "
+                "JOIN ( "
+                "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
+                "    FROM financial_ledger "
+                "    WHERE user_id = %s AND description != 'Time Advanced' "
+                "    GROUP BY transaction_uuid "
+                "    ORDER BY max_date DESC, max_id DESC "
+                "    LIMIT %s "
+                ") AS recent_t "
+                "ON l.transaction_uuid = recent_t.transaction_uuid "
+                "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
+            )
+            cursor.execute(query, (user_id, transaction_limit, user_id))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_recurring_expenses(self, user_id):
+        conn, cursor = self._get_db_connection()
+        try:
+            query = """
+                SELECT r.expense_id, r.description, r.amount, r.due_day_of_month, r.last_processed_date, a.name AS payment_account_name
+                FROM recurring_expenses r
+                JOIN accounts a ON r.payment_account_id = a.account_id
+                WHERE r.user_id = %s
+                ORDER BY r.due_day_of_month, r.description
+            """
+            cursor.execute(query, (user_id,))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_unique_descriptions(self, user_id, transaction_type='expense'):
+        conn, cursor = self._get_db_connection()
+        try:
+            base_query = "SELECT DISTINCT description FROM financial_ledger WHERE user_id = %s AND description != ''"
+            if transaction_type == 'income':
+                query = f"{base_query} AND account = 'Income' ORDER BY description"
+            else:
+                query = f"{base_query} AND account = 'Expenses' ORDER BY description"
+            
+            cursor.execute(query, (user_id,))
+            return [row['description'] for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def calculate_daily_burn_rate(self, user_id):
+        conn, cursor = self._get_db_connection()
+        try:
+            query = "SELECT SUM(amount) AS total_monthly FROM recurring_expenses WHERE user_id = %s AND frequency = 'MONTHLY'"
+            cursor.execute(query, (user_id,))
+            result = cursor.fetchone()
+            if result and result['total_monthly']:
+                return float(Decimal(result['total_monthly']) / 30)
+            return 0.0
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_daily_net(self, user_id, for_date):
+        conn, cursor = self._get_db_connection()
+        try:
+            query = """
+                SELECT
+                    SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
+                    SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
+                FROM financial_ledger
+                WHERE user_id = %s AND DATE(transaction_date) = %s
+            """
+            cursor.execute(query, (user_id, for_date.date()))
+            result = cursor.fetchone()
+            total_income = result['total_income'] or Decimal('0.00')
+            total_expenses = result['total_expenses'] or Decimal('0.00')
+            return float(total_income - total_expenses)
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_n_day_average(self, user_id, days=30, weighted=True):
+        conn, cursor = self._get_db_connection()
+        try:
+            current_date = self._get_user_current_date(cursor, user_id)
+
+            # Get the first transaction date to know how long the user has been playing
+            cursor.execute(
+                """SELECT MIN(DATE(transaction_date)) as first_date
+                   FROM financial_ledger
+                   WHERE user_id = %s
+                   AND description != 'Time Advanced'
+                   AND description != 'Initial Balance'""",
+                (user_id,)
+            )
+            first_date_result = cursor.fetchone()
+
+            if not first_date_result or not first_date_result['first_date']:
+                return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
+
+            first_date = first_date_result['first_date']
+            days_since_start = (current_date.date() - first_date).days + 1
+
+            # For the first 30 days, use all available data at 100% weight
+            if days_since_start <= 30:
+                query = """
+                    SELECT
+                        DATE(transaction_date) as day,
+                        SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
+                        SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
+                    FROM financial_ledger
+                    WHERE user_id = %s
+                        AND DATE(transaction_date) >= %s
+                        AND description != 'Time Advanced'
+                        AND description != 'Initial Balance'
+                    GROUP BY DATE(transaction_date)
+                """
+                cursor.execute(query, (user_id, first_date))
+                results = cursor.fetchall()
+
+                if not results:
+                    return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
+
+                total_net = sum(
+                    (row['total_income'] or Decimal('0.00')) - (row['total_expenses'] or Decimal('0.00'))
+                    for row in results
+                )
+
+                # Use calendar days since start, not just days with transactions
+                average = float(total_net) / days_since_start if days_since_start > 0 else 0.0
+
+                return {
+                    'average': average,
+                    'days_with_data': days_since_start,
+                    'total_net': float(total_net),
+                    'weighted': False
+                }
+
+            # After 30 days, use the most recent 30 days at 100% weight
+            # TODO: Add weighted averaging for 31-60 and 61-90 days when implemented
+            else:
+                start_date = current_date - datetime.timedelta(days=29)  # Last 30 days including today
+
+                query = """
+                    SELECT
+                        DATE(transaction_date) as day,
+                        SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
+                        SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
+                    FROM financial_ledger
+                    WHERE user_id = %s
+                        AND DATE(transaction_date) BETWEEN %s AND %s
+                        AND description != 'Time Advanced'
+                        AND description != 'Initial Balance'
+                    GROUP BY DATE(transaction_date)
+                """
+                cursor.execute(query, (user_id, start_date.date(), current_date.date()))
+                results = cursor.fetchall()
+
+                if not results:
+                    return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
+
+                total_net = sum(
+                    (row['total_income'] or Decimal('0.00')) - (row['total_expenses'] or Decimal('0.00'))
+                    for row in results
+                )
+
+                # Always divide by 30 calendar days, not just days with transactions
+                average = float(total_net) / 30.0
+
+                return {
+                    'average': average,
+                    'days_with_data': 30,
+                    'total_net': float(total_net),
+                    'weighted': False
+                }
+        finally:
+            cursor.close()
+            conn.close()
+
+    # --- ACTION METHODS ---
+
+    def setup_initial_accounts(self, user_id, accounts):
+        conn, cursor = self._get_db_connection()
+        try:
+            # --- FIX: Ensure a single Equity account exists ---
+            cursor.execute("SELECT account_id, balance FROM accounts WHERE user_id = %s AND name = 'Equity'", (user_id,))
+            equity_account = cursor.fetchone()
+            if not equity_account:
+                cursor.execute(
+                    "INSERT INTO accounts (user_id, name, type, balance) VALUES (%s, 'Equity', 'EQUITY', 0.00)",
+                    (user_id,)
+                )
+
+            now = datetime.datetime.now()
+            for acc in accounts:
+                cursor.execute(
+                    "INSERT INTO accounts (user_id, name, type, balance, credit_limit) VALUES (%s, %s, %s, %s, %s)",
+                    (user_id, acc['name'], acc['type'], acc['balance'], acc.get('credit_limit'))
+                )
+                uuid = f"init-{user_id}-{int(time.time())}-{acc['name']}"
+                balance = Decimal(acc['balance'])
+                self._create_initial_balance_entry(cursor, user_id, uuid, now, acc['name'], balance)
+            
+            conn.commit()
+            return True, "Initial accounts created successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred during account setup: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def add_single_account(self, user_id, name, acc_type, balance, credit_limit=None):
+        conn, cursor = self._get_db_connection()
+        try:
+            now = self._get_user_current_date(cursor, user_id)
+            cursor.execute(
+                "INSERT INTO accounts (user_id, name, type, balance, credit_limit) VALUES (%s, %s, %s, %s, %s)",
+                (user_id, name, acc_type, balance, credit_limit)
+            )
+            uuid = f"add-{user_id}-{int(time.time())}-{name}"
+            balance = Decimal(balance)
+            self._create_initial_balance_entry(cursor, user_id, uuid, now, name, balance)
+
+            conn.commit()
+            return True, f"Account '{name}' added successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _create_initial_balance_entry(self, cursor, user_id, uuid, transaction_date, account_name, balance):
+        fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)"
         
-        while days_added < business_days:
-            current_date += datetime.timedelta(days=1)
-            # Monday = 0, Sunday = 6. Skip Saturday (5) and Sunday (6)
-            if current_date.weekday() < 5:  # Monday through Friday
-                days_added += 1
+        if balance >= 0:
+            # Asset: Debit the asset account, Credit Equity
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, account_name, 'Initial Balance', balance, 0))
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, 'Equity', 'Initial Balance', 0, balance))
+        else:
+            # Liability: Debit Equity, Credit the liability account
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, 'Equity', 'Initial Balance', abs(balance), 0))
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, account_name, 'Initial Balance', 0, abs(balance)))
+
+        # Update the balance of the single Equity account
+        cursor.execute(
+            "UPDATE accounts SET balance = balance + %s WHERE user_id = %s AND name = 'Equity'",
+            (balance, user_id)
+        )
+
+
+    def update_account_name(self, user_id, account_id, new_name):
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT name FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
+            result = cursor.fetchone()
+            if not result:
+                return False, "Account not found or you do not have permission to edit it."
+            old_name = result['name']
+
+            cursor.execute("UPDATE accounts SET name = %s WHERE account_id = %s", (new_name, account_id))
+            cursor.execute("UPDATE financial_ledger SET account = %s WHERE user_id = %s AND account = %s", (new_name, user_id, old_name))
+            
+            conn.commit()
+            return True, f"Account '{old_name}' has been renamed to '{new_name}'."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def log_income(self, user_id, account_id, description, amount, transaction_date=None, cursor=None):
+        conn = None
+        if not cursor:
+            conn, cursor = self._get_db_connection()
+        try:
+            amount = Decimal(amount)
+            if amount <= 0: return False, "Income amount must be positive."
+
+            cursor.execute("SELECT * FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
+            account = cursor.fetchone()
+            if not account:
+                return False, "Invalid account specified."
+
+            new_balance = account['balance'] + amount
+            current_date = transaction_date if transaction_date else self._get_user_current_date(cursor, user_id)
+            uuid = f"income-{user_id}-{int(time.time())}-{time.time()}"
+
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0))
+            cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount))
+
+            cursor.execute("UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s", (new_balance, account_id, user_id))
+            if conn: conn.commit()
+            return True, f"Successfully logged income to '{account['name']}'."
         
-        return current_date
+        except Exception as e:
+            if conn: conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            if conn:
+                if cursor: cursor.close()
+                if conn: conn.close()
+
+
+    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month):
+        conn, cursor = self._get_db_connection()
+        try:
+            amount = Decimal(amount)
+            if amount <= 0: return False, "Amount must be positive."
+            if not 1 <= due_day_of_month <= 31: return False, "Due day must be between 1 and 31."
+
+            cursor.execute("SELECT 1 FROM accounts WHERE account_id = %s AND user_id = %s", (payment_account_id, user_id))
+            if not cursor.fetchone():
+                return False, "Invalid payment account specified."
+
+            cursor.execute(
+                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month) VALUES (%s, %s, %s, 'MONTHLY', %s, %s)",
+                (user_id, description, amount, payment_account_id, due_day_of_month)
+            )
+            conn.commit()
+            return True, f"Recurring expense '{description}' added."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def delete_recurring_expense(self, user_id, expense_id):
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("DELETE FROM recurring_expenses WHERE expense_id = %s AND user_id = %s", (expense_id, user_id))
+            if cursor.rowcount == 0:
+                return False, "Expense not found or you do not have permission to delete it."
+            
+            conn.commit()
+            return True, "Recurring expense deleted successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month):
+        conn, cursor = self._get_db_connection()
+        try:
+            amount = Decimal(amount)
+            if amount <= 0: return False, "Amount must be positive."
+            if not 1 <= due_day_of_month <= 31: return False, "Due day must be between 1 and 31."
+
+            # Debug: Check if expense exists
+            cursor.execute("SELECT * FROM recurring_expenses WHERE expense_id = %s", (expense_id,))
+            existing = cursor.fetchone()
+            print(f"DEBUG: Trying to update expense_id={expense_id} for user_id={user_id}")
+            print(f"DEBUG: Existing expense: {existing}")
+            print(f"DEBUG: New values - description={description}, amount={amount}, due_day_of_month={due_day_of_month}")
+
+            cursor.execute(
+                "UPDATE recurring_expenses SET description = %s, amount = %s, due_day_of_month = %s WHERE expense_id = %s AND user_id = %s",
+                (description, amount, due_day_of_month, expense_id, user_id)
+            )
+            print(f"DEBUG: cursor.rowcount = {cursor.rowcount}")
+
+            # MySQL returns rowcount=0 when no rows are changed (even if the WHERE matched)
+            # Instead, check if the expense exists with correct user_id
+            if cursor.rowcount == 0 and not existing:
+                return False, "Expense not found or you do not have permission to update it."
+
+            if cursor.rowcount == 0 and existing and str(existing['user_id']) != str(user_id):
+                return False, "Expense not found or you do not have permission to update it."
+
+            conn.commit()
+            return True, "Recurring expense updated successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+
+    def log_expense(self, user_id, account_id, description, amount, transaction_date=None, cursor=None):
+        conn = None
+        if not cursor:
+            conn, cursor = self._get_db_connection()
+        try:
+            amount = Decimal(amount)
+            if amount <= 0: return False, "Expense amount must be positive."
+
+            cursor.execute("SELECT * FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
+            account = cursor.fetchone()
+            if not account: return False, "Invalid account specified."
+            
+            if account['type'] == 'CREDIT_CARD':
+                if account['credit_limit'] is not None and (account['balance'] - amount) < -account['credit_limit']:
+                    return False, "Transaction declined. Exceeds credit limit."
+            elif account['balance'] < amount:
+                return False, "Insufficient funds."
+
+            new_balance = account['balance'] - amount
+            current_date = transaction_date if transaction_date else self._get_user_current_date(cursor, user_id)
+            uuid = f"expense-{user_id}-{int(time.time())}-{time.time()}"
+
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(fin_query, (user_id, uuid, current_date, 'Expenses', description, amount, 0))
+            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, 0, amount))
+
+            cursor.execute("UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s", (new_balance, account_id, user_id))
+
+            if conn: # Only commit if this function owns the connection
+                conn.commit()
+            return True, f"Successfully logged expense from '{account['name']}'."
+        
+        except Exception as e:
+            if conn: # Only rollback if this function owns the connection
+                conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            if conn: # Only close if this function owns the connection
+                cursor.close()
+                conn.close()
+    
+    def advance_time(self, user_id, days_to_advance=1):
+        conn, cursor = self._get_db_connection()
+        try:
+            simulation_start_date = self._get_user_current_date(cursor, user_id)
+            processing_log = []
+
+            # Fetch recurring expenses ONCE before the loop
+            cursor.execute("SELECT * FROM recurring_expenses WHERE user_id = %s", (user_id,))
+            recurring_expenses = cursor.fetchall()
+            
+            for i in range(days_to_advance):
+                current_day = simulation_start_date + datetime.timedelta(days=i + 1)
+                
+                for expense in recurring_expenses:
+                    # We only care about processing the bill on its due day.
+                    if current_day.day == expense['due_day_of_month']:
+                        is_due_for_payment = False
+                        last_processed = expense.get('last_processed_date') # Use .get() for safety
+
+                        if not last_processed:
+                            # If it's never been paid, it's due today.
+                            is_due_for_payment = True
+                        elif (current_day.year, current_day.month) > (last_processed.year, last_processed.month):
+                            # If today is in a later month than the last payment, it's due.
+                            is_due_for_payment = True
+
+                        if is_due_for_payment:
+                            success, message = self.log_expense(
+                                user_id, 
+                                expense['payment_account_id'], 
+                                expense['description'], 
+                                expense['amount'],
+                                transaction_date=current_day,
+                                cursor=cursor # Pass the existing cursor
+                            )
+                            
+                            if success:
+                                cursor.execute(
+                                    "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
+                                    (current_day.date(), expense['expense_id'])
+                                )
+                                # Update the in-memory record to prevent re-payment in the same run
+                                expense['last_processed_date'] = current_day.date()
+                                processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Paid {expense['description']} (${expense['amount']}).")
+                            else:
+                                processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to pay {expense['description']} - {message}")
+
+            final_date = simulation_start_date + datetime.timedelta(days=days_to_advance)
+            # Check if we need to insert a time marker using the existing cursor
+            cursor.execute(
+                "SELECT transaction_date FROM financial_ledger WHERE user_id = %s ORDER BY transaction_date DESC, entry_id DESC LIMIT 1",
+                (user_id,)
+            )
+            last_entry = cursor.fetchone()
+            if not last_entry or last_entry['transaction_date'] < final_date:
+                uuid = f"time-adv-{user_id}-{int(time.time())}"
+                cursor.execute(
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description) VALUES (%s, %s, %s, 'System', 'Time Advanced')",
+                    (user_id, uuid, final_date)
+                )
+            
+            if not processing_log and days_to_advance > 0:
+                processing_log.append(f"Time advanced to {final_date.strftime('%Y-%m-%d')}. No bills were due.")
+
+            conn.commit()
+            return {'log': processing_log}
+        except Exception as e:
+            conn.rollback()
+            return {'log': [f"An error occurred during time advance: {e}"]}
+        finally:
+            cursor.close()
+            conn.close()
