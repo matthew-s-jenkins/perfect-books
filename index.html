@@ -11,11 +11,194 @@
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans">
     <div id="root"></div>
-
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo } = React;
+        const { useState, useEffect } = React;
         const API_BASE_URL = 'http://127.0.0.1:5000';
+        
+        const fetchWithCredentials = (url, options = {}) => {
+            return fetch(url, { ...options, credentials: 'include' });
+        };
+        
+        // --- UTILITY FUNCTION ---
+        const categorizeAccount = (accountName, accountTypeMap) => {
+            const type = accountTypeMap.get(accountName);
+            const name = accountName.toLowerCase();
+
+            if (type === 'CREDIT_CARD' || type === 'LOAN' || name.includes('mortgage')) return 'liability';
+            if (name === 'system') return 'system';
+            if (name.includes('equity') || name.includes('capital') || name.includes('retained')) return 'equity';
+            if (name.includes('income') || name.includes('revenue') || name.includes('sales')) return 'income';
+            if (name.includes('expenses') || name.includes('expense') || name.includes('cost')) return 'expense';
+            
+            return 'asset';
+        };
+
         // --- CHILD COMPONENTS ---
+
+        function Header({ status, onTimeAdvanced, username }) {
+            const formattedDate = status ? 
+                new Date(status.date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                }) : '...';
+
+            const handleLogout = async () => {
+                await fetchWithCredentials(`${API_BASE_URL}/api/logout`, { method: 'POST' });
+                window.location.href = 'login.html';
+            };
+
+            return (
+                <header className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h1 className="text-3xl font-bold text-white">Perfect Books</h1>
+                            <p className="text-gray-400">Personal Finance Manager</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-lg font-medium text-white">{formattedDate}</p>
+                            <p className="text-xs text-gray-500 mb-2">Current Date</p>
+                            {username && (
+                                <div className="text-xs text-gray-400">
+                                    <span className="font-medium text-cyan-400">{username}</span>
+                                    <button
+                                        onClick={handleLogout}
+                                        className="ml-2 font-medium text-red-500 hover:text-red-400 hover:underline focus:outline-none"
+                                    >
+                                        (logout)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <AdvanceTime onTimeAdvanced={onTimeAdvanced} />
+                </header>
+            );
+        }
+
+        function AdvanceTime({ onTimeAdvanced }) {
+            const [isAdvancing, setIsAdvancing] = useState(false);
+            const handleAdvance = async () => {
+                setIsAdvancing(true);
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/advance_time`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ days: 1 }),
+                    });
+                    if (response.ok) {
+                        onTimeAdvanced();
+                    } else {
+                        console.error("Failed to advance time.");
+                    }
+                } catch (err) {
+                    console.error("Error advancing time:", err);
+                } finally {
+                    setIsAdvancing(false);
+                }
+            };
+            return (
+                <div className="mt-4 border-t border-dashed border-gray-600 pt-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-sm font-medium text-amber-400">Testing Feature</h3>
+                            <p className="text-xs text-gray-500">Automatic bill pay logic is not yet complete.</p>
+                        </div>
+                        <button 
+                            onClick={handleAdvance} 
+                            disabled={isAdvancing}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-md disabled:bg-gray-500"
+                        >
+                            {isAdvancing ? 'Advancing...' : 'Advance 1 Day'}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function Meter({ meterData, averageData }) {
+            const { daily_burn_rate } = meterData;
+            const formattedGoal = daily_burn_rate.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+            const avgNetProgress = averageData ? averageData.average - daily_burn_rate : 0;
+            const isAvgAhead = avgNetProgress >= 0;
+            const avgColorClass = isAvgAhead ? 'text-green-400' : 'text-red-400';
+            const formattedAvgProgress = Math.abs(avgNetProgress).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            const avgStatusText = isAvgAhead ? 'Ahead of' : 'Behind';
+
+            return (
+                <div className="bg-gray-800 shadow rounded-lg p-6 mb-6">
+                    <h2 className="text-lg font-medium text-gray-300 mb-2">Progress Meter</h2>
+                    {averageData && averageData.days_with_data > 0 ? (
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-400 mb-2">{averageData.days_with_data}-Day Average</h3>
+                            <div className="flex items-baseline">
+                                <p className={`text-4xl font-bold ${avgColorClass}`}>{formattedAvgProgress}</p>
+                                <p className="ml-2 text-gray-400">{avgStatusText} Goal</p>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Avg daily net: {averageData.average.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
+                        </div>
+                    ) : (
+                        <p className="text-gray-400">No transaction data yet. Start logging income and expenses to see your progress.</p>
+                    )}
+                    <p className="text-sm text-gray-500 mt-4 pt-4 border-t border-gray-700">Your daily goal is to net {formattedGoal} to cover recurring expenses.</p>
+                </div>
+            );
+        }
+
+        function BalanceSheetSummary({ accounts }) {
+            const accountTypeMap = new Map();
+            accounts.forEach(acc => {
+                accountTypeMap.set(acc.name, acc.type);
+            });
+            
+            const totals = accounts.reduce((acc, account) => {
+                const category = categorizeAccount(account.name, accountTypeMap);
+                // Ignore the special 'equity' account in this summary calculation
+                if (category !== 'equity') {
+                    const balance = parseFloat(account.balance);
+                    if (category === 'asset') acc.assets += balance;
+                    if (category === 'liability') acc.liabilities += balance;
+                }
+                return acc;
+            }, { assets: 0, liabilities: 0 });
+
+            // Equity = Assets - Liabilities
+            totals.equity = totals.assets - totals.liabilities;
+
+            // Check if the accounting equation balances: Assets = Liabilities + Equity
+            const rightSide = totals.liabilities + totals.equity;
+            const isBalanced = Math.abs(totals.assets - rightSide) < 0.01;
+
+            return (
+                <div className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                    <h2 className="text-sm font-medium text-gray-300 mb-3">Balance Sheet Check (Assets = Liabilities + Equity)</h2>
+                    <div className="flex items-center justify-around text-center font-mono">
+                        <div className="w-1/4">
+                            <p className="text-xs text-gray-500">Total Assets</p>
+                            <p className="text-lg text-green-400">{totals.assets.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                        </div>
+                        <div className="text-2xl text-gray-600">=</div>
+                         <div className="w-1/4">
+                            <p className="text-xs text-gray-500">Total Liabilities</p>
+                            <p className="text-lg text-red-400">{totals.liabilities.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                        </div>
+                        <div className="text-2xl text-gray-600">+</div>
+                        <div className="w-1/4">
+                            <p className="text-xs text-gray-500">Total Equity</p>
+                            <p className="text-lg text-cyan-400">{totals.equity.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                        </div>
+                        <div className="w-1/4 pl-4 border-l border-gray-700">
+                             <p className="text-xs text-gray-500">Result</p>
+                             <p className={`text-lg font-bold ${isBalanced ? 'text-green-400' : 'text-red-400'}`}>
+                                {isBalanced ? 'Balanced' : 'Error'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         function AccountsList({ accounts }) {
             return (
                 <div className="bg-gray-800 shadow rounded-lg p-4">
@@ -30,11 +213,10 @@
                         </thead>
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
                             {accounts.map(account => (
-                                <tr key={account.name}>
+                                <tr key={account.account_id}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{account.name}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{account.type}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-cyan-400">
-                                        {/* Convert the balance string to a number before formatting */}
                                         {parseFloat(account.balance).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
                                     </td>
                                 </tr>
@@ -44,89 +226,359 @@
                 </div>
             );
         }
-        function LedgerView({ ledger }) {
+
+        function LedgerView({ ledger, accounts }) {
+            const accountTypeMap = new Map();
+            accounts.forEach(acc => {
+                accountTypeMap.set(acc.name, acc.type);
+            });
+
+            const groupedTransactions = ledger.reduce((acc, entry) => {
+                const uuid = entry.transaction_uuid || `${entry.transaction_date}_${entry.description}`;
+                if (!acc[uuid]) {
+                    acc[uuid] = { date: entry.transaction_date, entries: [], description: entry.description };
+                }
+                acc[uuid].entries.push(entry);
+                if (entry.description && !['Time Advanced', 'Initial Balance'].includes(entry.description)) {
+                    acc[uuid].description = entry.description;
+                }
+                return acc;
+            }, {});
+
+            const transactions = Object.values(groupedTransactions)
+                .filter(t => t.description !== 'Time Advanced') // <-- This is the fix
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const getAccountDisplay = (account, amount, isDebit) => {
+                const category = categorizeAccount(account, accountTypeMap);
+                let effect = (category === 'asset' || category === 'expense') ? (isDebit ? '↑' : '↓') : (isDebit ? '↓' : '↑');
+                return { account, amount, effect, category };
+            };
+
+            const renderImpact = (value, category) => {
+                if (!value || value === 0) return <span className="text-gray-600">—</span>;
+
+                // Color based purely on equation direction: positive = green, negative = red
+                const color = value > 0 ? 'text-green-400' : 'text-red-400';
+                const sign = value > 0 ? '+' : '';
+                return <span className={color}>{sign}{value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>;
+            };
+
             return (
                 <div className="bg-gray-800 shadow rounded-lg p-4 mt-6">
-                    <h2 className="text-xl font-bold text-white mb-4">Transaction Ledger</h2>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-700">
-                            <thead className="bg-gray-700">
-                                <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Account</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Description</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Debit</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Credit</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-gray-800 divide-y divide-gray-700">
-                                {ledger.map(entry => (
-                                    <tr key={entry.entry_id}>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-400">
-                                            {/* Format the date to be more readable */}
-                                            {new Date(entry.transaction_date).toLocaleDateString('en-CA')}
-                                        </td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-white">{entry.account}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-300 max-w-xs truncate" title={entry.description}>
-                                            {/* Truncate long descriptions */}
-                                            {entry.description.length > 40 ? `${entry.description.substring(0, 37)}...` : entry.description}
-                                        </td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-mono text-green-400">
-                                            {/* Only show value if debit is greater than 0 */}
-                                            {parseFloat(entry.debit) > 0 ? parseFloat(entry.debit).toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : ''}
-                                        </td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-mono text-red-400">
-                                            {/* Only show value if credit is greater than 0 */}
-                                            {parseFloat(entry.credit) > 0 ? parseFloat(entry.credit).toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : ''}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="flex items-center text-xs uppercase text-gray-400 font-medium px-3 mb-2">
+                        <div className="w-20">Date</div>
+                        <div className="flex-1">Transaction</div>
+                        <div className="w-32 text-right">Amount</div>
+                        <div className="w-24 text-center">Assets</div>
+                        <div className="w-8 text-center">=</div>
+                        <div className="w-24 text-center">Liabilities</div>
+                        <div className="w-8 text-center">+</div>
+                        <div className="w-24 text-center">Equity</div>
+                    </div>
+                    <div className="space-y-2">
+                        {transactions.map((transaction, idx) => {
+                            if (transaction.entries.length === 1 && transaction.entries[0].account === 'System') return null;
+                            
+                            const debits = transaction.entries.filter(e => e.debit > 0).map(e => getAccountDisplay(e.account, parseFloat(e.debit), true));
+                            const credits = transaction.entries.filter(e => e.credit > 0).map(e => getAccountDisplay(e.account, parseFloat(e.credit), false));
+
+                            if (transaction.description === 'Initial Balance' && debits.length > 0) {
+                                return debits.map((debit, debitIdx) => {
+                                    const credit = credits[debitIdx] || credits[0];
+                                    const singleAmount = debit.amount;
+
+                                    // Calculate impact using debit/credit effects
+                                    const impact = {
+                                        assets: 0,
+                                        liabilities: 0,
+                                        equity: 0
+                                    };
+
+                                    // Process debit entry
+                                    const debitChange = debit.effect === '↑' ? singleAmount : -singleAmount;
+                                    if (debit.category === 'asset') impact.assets += debitChange;
+                                    else if (debit.category === 'liability') impact.liabilities += debitChange;
+                                    else if (debit.category === 'equity') impact.equity += debitChange;
+
+                                    // Process credit entry
+                                    if (credit) {
+                                        const creditChange = credit.effect === '↑' ? singleAmount : -singleAmount;
+                                        if (credit.category === 'asset') impact.assets += creditChange;
+                                        else if (credit.category === 'liability') impact.liabilities += creditChange;
+                                        else if (credit.category === 'equity') impact.equity += creditChange;
+                                    }
+                                    return (
+                                        <div key={`${idx}-${debitIdx}`} className="flex items-center bg-gray-700 rounded-lg p-3 hover:bg-gray-650 transition-colors text-sm">
+                                            <div className="w-20 text-gray-400">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                            <div className="flex-1">
+                                                <p className="font-medium text-white">{transaction.description}</p>
+                                                <div className="flex items-center text-xs text-gray-300">
+                                                    <span>{credit ? credit.account : 'Equity'}</span>
+                                                    <svg className="w-4 h-4 text-gray-500 mx-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                                                    <span>{debit.account}</span>
+                                                </div>
+                                            </div>
+                                            <div className="w-32 text-right font-mono text-cyan-400">{singleAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
+                                            <div className="w-24 text-center text-xs font-mono">{renderImpact(impact.assets, 'asset')}</div>
+                                            <div className="w-8 text-center text-gray-600">=</div>
+                                            <div className="w-24 text-center text-xs font-mono">{renderImpact(impact.liabilities, 'liability')}</div>
+                                            <div className="w-8 text-center text-gray-600">+</div>
+                                            <div className="w-24 text-center text-xs font-mono">{renderImpact(impact.equity, 'equity')}</div>
+                                        </div>
+                                    );
+                                });
+                            }
+                            
+                            const transactionAmount = debits.reduce((sum, d) => sum + d.amount, 0);
+                            const impact = [...debits, ...credits].reduce((acc, item) => {
+                                const change = item.effect === '↑' ? item.amount : -item.amount;
+                                if (item.category === 'asset') acc.assets += change;
+                                else if (item.category === 'liability') acc.liabilities += change;
+                                else if (item.category === 'equity' || item.category === 'income') acc.equity += change;
+                                if (item.category === 'expense') acc.equity -= item.amount;
+                                return acc;
+                            }, {assets: 0, liabilities: 0, equity: 0});
+                            
+                            return (
+                                <div key={idx} className="flex items-center bg-gray-700 rounded-lg p-3 hover:bg-gray-650 transition-colors text-sm">
+                                    <div className="w-20 text-gray-400">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                    <div className="flex-1">
+                                        <p className="font-medium text-white">{transaction.description}</p>
+                                        <div className="flex items-center text-xs text-gray-300">
+                                            <span>{credits.map(c => c.account).join(', ')}</span>
+                                            <svg className="w-4 h-4 text-gray-500 mx-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                                            <span>{debits.map(d => d.account).join(', ')}</span>
+                                        </div>
+                                    </div>
+                                    <div className="w-32 text-right font-mono text-cyan-400">{transactionAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
+                                    <div className="w-24 text-center text-xs font-mono">{renderImpact(impact.assets, 'asset')}</div>
+                                    <div className="w-8 text-center text-gray-600">=</div>
+                                    <div className="w-24 text-center text-xs font-mono">{renderImpact(impact.liabilities, 'liability')}</div>
+                                    <div className="w-8 text-center text-gray-600">+</div>
+                                    <div className="w-24 text-center text-xs font-mono">{renderImpact(impact.equity, 'equity')}</div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             );
         }
+        
+        function RecurringExpensesPage({ accounts, onDataChange }) {
+            const [expenses, setExpenses] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+            const [error, setError] = useState('');
+            
+            const [newDescription, setNewDescription] = useState('');
+            const [newAmount, setNewAmount] = useState('');
+            const [newPaymentAccountId, setNewPaymentAccountId] = useState('');
+            const [newDueDay, setNewDueDay] = useState('1');
+
+            const [editingId, setEditingId] = useState(null);
+            const [editingDescription, setEditingDescription] = useState('');
+            const [editingAmount, setEditingAmount] = useState('');
+            const [editingDueDay, setEditingDueDay] = useState('');
+
+            useEffect(() => {
+                let mounted = true;
+                const loadExpenses = async () => {
+                    setIsLoading(true);
+                    try {
+                        const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses`);
+                        if (!response.ok) throw new Error('Failed to fetch recurring expenses.');
+                        const data = await response.json();
+                        if (mounted) setExpenses(data);
+                    } catch (err) {
+                        if (mounted) setError(err.message);
+                    } finally {
+                        if (mounted) setIsLoading(false);
+                    }
+                };
+                loadExpenses();
+                return () => { mounted = false; };
+            }, []);
+
+            const handleDelete = async (expenseId) => {
+                if (confirm('Are you sure you want to delete this recurring expense?')) {
+                    try {
+                        const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses/${expenseId}`, { method: 'DELETE' });
+                        if (response.ok) onDataChange(); 
+                        else {
+                            const result = await response.json();
+                            setError(result.message || 'Failed to delete expense.');
+                        }
+                    } catch (err) { setError('An error occurred. Please try again.'); }
+                }
+            };
+
+            const handleAddNewExpense = async (e) => {
+                e.preventDefault();
+                setError('');
+                if (!newDescription || !newAmount || !newPaymentAccountId || !newDueDay) {
+                    setError('All fields are required for new expense.');
+                    return;
+                }
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            description: newDescription, 
+                            amount: parseFloat(newAmount), 
+                            payment_account_id: parseInt(newPaymentAccountId),
+                            due_day_of_month: parseInt(newDueDay)
+                        }),
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        setNewDescription('');
+                        setNewAmount('');
+                        setNewPaymentAccountId('');
+                        setNewDueDay('1');
+                        onDataChange();
+                    } else { setError(result.message); }
+                } catch (err) { setError('An error occurred. Please try again.'); }
+            };
+
+            const handleEditClick = (expense) => {
+                setEditingId(expense.expense_id);
+                setEditingDescription(expense.description);
+                setEditingAmount(expense.amount);
+                setEditingDueDay(expense.due_day_of_month);
+            };
+
+            const handleCancelEdit = () => setEditingId(null);
+
+            const handleUpdateExpense = async (expenseId) => {
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses/${expenseId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            description: editingDescription, 
+                            amount: parseFloat(editingAmount),
+                            due_day_of_month: parseInt(editingDueDay)
+                        })
+                    });
+                    if (response.ok) {
+                        handleCancelEdit();
+                        onDataChange();
+                    } else {
+                        const result = await response.json();
+                        setError(result.message || 'Failed to update expense.');
+                    }
+                } catch(err) { setError('An error occurred during update. Please try again.'); }
+            };
+
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                    <div className="md:col-span-2 bg-gray-800 shadow rounded-lg p-4">
+                        <h2 className="text-xl font-bold text-white mb-4">Manage Recurring Expenses</h2>
+                        {isLoading ? <p>Loading...</p> : 
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-700">
+                                    <thead className="bg-gray-700">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Description</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Amount</th>
+                                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Due Day</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Payment Account</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Last Paid</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-gray-800 divide-y divide-gray-700">
+                                        {expenses.map(exp => (
+                                            <tr key={exp.expense_id}>
+                                                {editingId === exp.expense_id ? (
+                                                    <>
+                                                        <td className="px-2 py-2"><input type="text" value={editingDescription} onChange={e => setEditingDescription(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-full"/></td>
+                                                        <td className="px-2 py-2"><input type="number" step="0.01" value={editingAmount} onChange={e => setEditingAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-24 text-right"/></td>
+                                                        <td className="px-2 py-2"><input type="number" value={editingDueDay} onChange={e => setEditingDueDay(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-16 text-center"/></td>
+                                                        <td className="px-2 py-2 text-sm text-gray-500">{exp.payment_account_name}</td>
+                                                        <td className="px-2 py-2"></td>
+                                                        <td className="px-2 py-2 text-sm text-right space-x-2">
+                                                            <button onClick={() => handleUpdateExpense(exp.expense_id)} className="text-green-500 hover:text-green-400 text-xs font-semibold">Save</button>
+                                                            <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300 text-xs font-semibold">Cancel</button>
+                                                        </td>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-white">{exp.description}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-mono text-red-400">{parseFloat(exp.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-center">{exp.due_day_of_month}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-400">{exp.payment_account_name}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-400">{exp.last_processed_date ? new Date(exp.last_processed_date).toLocaleDateString('en-CA') : 'Never'}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-right space-x-2">
+                                                            <button onClick={() => handleEditClick(exp)} className="text-cyan-400 hover:text-cyan-300 text-xs font-semibold">Edit</button>
+                                                            <button onClick={() => handleDelete(exp.expense_id)} className="text-red-500 hover:text-red-400 text-xs font-semibold">Delete</button>
+                                                        </td>
+                                                    </>
+                                                )}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                         {expenses.length === 0 && !isLoading && <p className="text-gray-500 py-4 text-center">You have no recurring expenses set up.</p>}
+                    </div>
+                    <div className="bg-gray-800 shadow rounded-lg p-6">
+                        <h2 className="text-xl font-bold text-white mb-4">Add New Bill</h2>
+                        <form onSubmit={handleAddNewExpense}>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Description</label>
+                                <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" placeholder="e.g., Netflix"/>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-gray-400 mb-2">Amount</label>
+                                    <input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" placeholder="15.99"/>
+                                </div>
+                                <div>
+                                    <label className="block text-gray-400 mb-2">Due Day</label>
+                                    <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" />
+                                </div>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-gray-400 mb-2">Pay From Account</label>
+                                <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
+                                    <option value="">-- Select an Account --</option>
+                                    {accounts.filter(acc => acc.type !== 'CASH').map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                </select>
+                            </div>
+                             {error && <p className="text-red-400 mb-4 text-center">{error}</p>}
+                            <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">
+                                + Add Recurring Expense
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
         function LogIncomeForm({ accounts, onClose, onIncomeAdded, suggestions }) {
-            // State for each form input
             const [description, setDescription] = useState('');
             const [amount, setAmount] = useState('');
             const [selectedAccountId, setSelectedAccountId] = useState('');
             const [error, setError] = useState('');
-
             const handleSubmit = async (event) => {
-                event.preventDefault(); // Prevent default browser form submission
-                if (!selectedAccountId) {
-                    setError('Please select an account.');
-                    return;
-                }
-                
+                event.preventDefault();
+                if (!selectedAccountId) { setError('Please select an account.'); return; }
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/income`, {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/income`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            description: description,
-                            amount: parseFloat(amount),
-                            account_id: parseInt(selectedAccountId)
-                        }),
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ description, amount: parseFloat(amount), account_id: parseInt(selectedAccountId) }),
                     });
-
                     const result = await response.json();
-
                     if (result.success) {
-                        onIncomeAdded(); // Lift state up to the parent
-                        onClose(); // Close the form
-                    } else {
-                        setError(result.message);
-                    }
-                } catch (err) {
-                    setError('An error occurred. Please try again.');
-                }
+                        onIncomeAdded();
+                        onClose();
+                    } else { setError(result.message); }
+                } catch (err) { setError('An error occurred. Please try again.'); }
             };
-
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                     <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
@@ -134,89 +586,52 @@
                         <form onSubmit={handleSubmit}>
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Account</label>
-                                <select 
-                                    value={selectedAccountId} 
-                                    onChange={(e) => setSelectedAccountId(e.target.value)}
-                                    className="w-full bg-gray-700 text-white p-2 rounded"
-                                >
+                                <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
                                     <option value="">-- Select an Account --</option>
                                     {accounts.map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
                                 </select>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Description</label>
-                                <input 
-                                    type="text" 
-                                    value={description} 
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    className="w-full bg-gray-700 text-white p-2 rounded" 
-                                    list="income-suggestions"
-                                />
-                                <datalist id="income-suggestions">
-                                    {suggestions.map(s => <option key={s} value={s} />)}
-                                </datalist>
+                                <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" list="income-suggestions"/>
+                                <datalist id="income-suggestions">{suggestions.map(s => <option key={s} value={s} />)}</datalist>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Amount</label>
-                                <input 
-                                    type="number" 
-                                    step="0.01" 
-                                    value={amount} 
-                                    onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full bg-gray-700 text-white p-2 rounded" 
-                                />
+                                <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded"/>
                             </div>
                             {error && <p className="text-red-400 mb-4">{error}</p>}
                             <div className="flex justify-end space-x-4">
-                                <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">
-                                    Cancel
-                                </button>
-                                <button type="submit" className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">
-                                    Log Income
-                                </button>
+                                <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
+                                <button type="submit" className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">Log Income</button>
                             </div>
                         </form>
                     </div>
                 </div>
             );
         }
+
         function LogExpenseForm({ accounts, onClose, onExpenseAdded, suggestions }) {
             const [description, setDescription] = useState('');
             const [amount, setAmount] = useState('');
             const [selectedAccountId, setSelectedAccountId] = useState('');
             const [error, setError] = useState('');
-
             const handleSubmit = async (event) => {
                 event.preventDefault();
-                if (!selectedAccountId) {
-                    setError('Please select an account.');
-                    return;
-                }
-                
+                if (!selectedAccountId) { setError('Please select an account.'); return; }
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/expense`, {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            description: description,
-                            amount: parseFloat(amount),
-                            account_id: parseInt(selectedAccountId)
-                        }),
+                        body: JSON.stringify({ description, amount: parseFloat(amount), account_id: parseInt(selectedAccountId) }),
                     });
-
                     const result = await response.json();
-
                     if (result.success) {
-                        onExpenseAdded(); // Signal to the parent to refresh data
+                        onExpenseAdded();
                         onClose();
-                    } else {
-                        setError(result.message);
-                    }
-                } catch (err) {
-                    setError('An error occurred. Please try again.');
-                }
+                    } else { setError(result.message); }
+                } catch (err) { setError('An error occurred. Please try again.'); }
             };
-
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                     <div className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
@@ -224,56 +639,35 @@
                         <form onSubmit={handleSubmit}>
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Pay From Account</label>
-                                <select 
-                                    value={selectedAccountId} 
-                                    onChange={(e) => setSelectedAccountId(e.target.value)}
-                                    className="w-full bg-gray-700 text-white p-2 rounded"
-                                >
+                                <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
                                     <option value="">-- Select an Account --</option>
-                                    {/* Note: We don't filter accounts for expenses */}
                                     {accounts.map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
                                 </select>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Description</label>
-                                <input 
-                                    type="text" 
-                                    value={description} 
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    className="w-full bg-gray-700 text-white p-2 rounded" 
-                                    list="expense-suggestions"
-                                />
-                                <datalist id="expense-suggestions">
-                                    {suggestions.map(s => <option key={s} value={s} />)}
-                                </datalist>
+                                <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" list="expense-suggestions"/>
+                                <datalist id="expense-suggestions">{suggestions.map(s => <option key={s} value={s} />)}</datalist>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Amount</label>
-                                <input 
-                                    type="number" 
-                                    step="0.01" 
-                                    value={amount} 
-                                    onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full bg-gray-700 text-white p-2 rounded" 
-                                />
+                                <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded"/>
                             </div>
                             {error && <p className="text-red-400 mb-4">{error}</p>}
                             <div className="flex justify-end space-x-4">
-                                <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">
-                                    Cancel
-                                </button>
-                                <button type="submit" className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded">
-                                    Log Expense
-                                </button>
+                                <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
+                                <button type="submit" className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded">Log Expense</button>
                             </div>
                         </form>
                     </div>
                 </div>
             );
         }
+
         // --- MAIN APP COMPONENT ---
         function App() {
             const [isLoading, setIsLoading] = useState(true);
+            const [username, setUsername] = useState('');
             const [accounts, setAccounts] = useState([]);
             const [ledger, setLedger] = useState([]);
             const [error, setError] = useState(null);
@@ -282,31 +676,37 @@
             const [isExpenseFormVisible, setIsExpenseFormVisible] = useState(false);
             const [incomeDescriptions, setIncomeDescriptions] = useState([]);
             const [expenseDescriptions, setExpenseDescriptions] = useState([]);
+            const [meterData, setMeterData] = useState(null);
+            const [averageData, setAverageData] = useState(null);
+            const [status, setStatus] = useState(null);
 
             const refreshData = async () => {
                 try {
                     !isLoading && setIsLoading(true);
-                    const [accountsRes, ledgerRes, incomeDescRes, expenseDescRes] = await Promise.all([
-                        fetch(`${API_BASE_URL}/api/accounts`),
-                        fetch(`${API_BASE_URL}/api/ledger`),
-                        fetch(`${API_BASE_URL}/api/descriptions/income`),
-                        fetch(`${API_BASE_URL}/api/descriptions/expense`)
+                    const responses = await Promise.all([
+                        fetchWithCredentials(`${API_BASE_URL}/api/accounts`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/ledger`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/descriptions/income`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/descriptions/expense`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/meter/summary`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/meter/n_day_average?days=30`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/status`)
                     ]);
-
-                    if (!accountsRes.ok || !ledgerRes.ok || !incomeDescRes.ok || !expenseDescRes.ok) {
-                        throw new Error('Network response was not ok');
+                    if (responses.some(res => !res.ok)) {
+                        const failedIndex = responses.findIndex(r => !r.ok);
+                        const endpoints = ['accounts', 'ledger', 'income descriptions', 'expense descriptions', 'meter summary', 'n-day average', 'status'];
+                        console.error(`Failed to fetch ${endpoints[failedIndex]}:`, responses[failedIndex].status);
+                        window.location.href = 'login.html';
+                        return;
                     }
-                    
-                    const accountsData = await accountsRes.json();
-                    const ledgerData = await ledgerRes.json();
-                    const incomeDescData = await incomeDescRes.json();
-                    const expenseDescData = await expenseDescRes.json();
-
+                    const [accountsData, ledgerData, incomeDescData, expenseDescData, meterSummaryData, averageDataResponse, statusData] = await Promise.all(responses.map(res => res.json()));
                     setAccounts(accountsData);
                     setLedger(ledgerData);
                     setIncomeDescriptions(incomeDescData);
                     setExpenseDescriptions(expenseDescData);
-
+                    setMeterData(meterSummaryData);
+                    setAverageData(averageDataResponse);
+                    setStatus(statusData);
                 } catch (error) {
                     setError(error.message);
                 } finally {
@@ -314,77 +714,61 @@
                 }
             };
 
-            const handleTransactionAdded = () => {
-                refreshData();
-            };
-            
+            const handleTransactionAdded = () => { refreshData(); };
+
             useEffect(() => {
-                refreshData();
+                const checkSession = async () => {
+                    try {
+                        const response = await fetchWithCredentials(`${API_BASE_URL}/api/check_session`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            setUsername(data.username);
+                            refreshData();
+                        } else {
+                           window.location.href = 'login.html';
+                        }
+                    } catch (error) {
+                        console.error("API server is not responding.", error);
+                        window.location.href = 'login.html';
+                    }
+                };
+                checkSession();
             }, []);
 
-            if (error) {
-                return <div className="text-red-400 p-8">Error: {error}</div>;
-            }
+            if (error) { return <div className="text-red-400 p-8">Error: {error}</div>; }
 
-            const navButtonClasses = (page) => 
+            const navButtonClasses = (page) =>
                 `px-4 py-2 text-sm font-medium rounded-md ${activePage === page ? 'bg-cyan-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
 
             return (
                 <div className="container mx-auto p-4 max-w-7xl">
-                    <header className="bg-gray-800 shadow rounded-lg p-4 mb-6">
-                        <div>
-                            <h1 className="text-3xl font-bold text-white">Perfect Books</h1>
-                            <p className="text-gray-400">Personal Finance Manager</p>
-                        </div>
-                    </header>
-                    
+                    {status && <Header status={status} onTimeAdvanced={refreshData} username={username} />}
                     <main>
-                        {isLoading ? (
-                            <p className="text-center">Loading your financial data...</p>
-                        ) : (
+                        {isLoading ? ( <p className="text-center">Loading your financial data...</p> ) : (
                             <div>
+                                {meterData && <Meter meterData={meterData} averageData={averageData} />}
+                                <BalanceSheetSummary accounts={accounts} />
                                 <div className="flex space-x-4 mb-6">
-                                    <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>
-                                        Accounts
-                                    </button>
-                                    <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>
-                                        Ledger
-                                    </button>
+                                    <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>Accounts</button>
+                                    <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>Ledger</button>
+                                    <button onClick={() => setActivePage('recurring')} className={navButtonClasses('recurring')}>Recurring</button>
                                     <div className="ml-auto flex space-x-2">
-                                        <button onClick={() => setIsIncomeFormVisible(true)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-md">
-                                            + Add Income
-                                        </button>
-                                        <button onClick={() => setIsExpenseFormVisible(true)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-md">
-                                            - Add Expense
-                                        </button>
+                                        <button onClick={() => setIsIncomeFormVisible(true)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-md">+ Add Income</button>
+                                        <button onClick={() => setIsExpenseFormVisible(true)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-md">- Add Expense</button>
                                     </div>
                                 </div>
-
                                 {activePage === 'accounts' && <AccountsList accounts={accounts} />}
-                                {activePage === 'ledger' && <LedgerView ledger={ledger} />}
+                                {activePage === 'ledger' && <LedgerView ledger={ledger} accounts={accounts} />}
+                                {activePage === 'recurring' && <RecurringExpensesPage accounts={accounts} onDataChange={refreshData} />}
                             </div>
                         )}
                     </main>
-
-                    {isIncomeFormVisible && 
-                        <LogIncomeForm 
-                            accounts={accounts.filter(acc => acc.type !== 'CREDIT_CARD')} 
-                            onClose={() => setIsIncomeFormVisible(false)} 
-                            onIncomeAdded={handleTransactionAdded} 
-                            suggestions={incomeDescriptions}
-                        />
-                    }
-                    {isExpenseFormVisible && 
-                        <LogExpenseForm 
-                            accounts={accounts} 
-                            onClose={() => setIsExpenseFormVisible(false)} 
-                            onExpenseAdded={handleTransactionAdded} 
-                            suggestions={expenseDescriptions}
-                        />
-                    }
+                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => acc.type !== 'CREDIT_CARD')} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions}/>}
+                    {isExpenseFormVisible && <LogExpenseForm accounts={accounts} onClose={() => setIsExpenseFormVisible(false)} onExpenseAdded={handleTransactionAdded} suggestions={expenseDescriptions}/>}
                 </div>
             );
         }
+
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>

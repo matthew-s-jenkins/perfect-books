@@ -31,24 +31,56 @@ def handle_advance_time(sim):
     input("\nPress Enter to return to the menu...")
 
 def handle_manage_expenses(sim):
-    """Handles adding recurring expenses"""
+
+    """Handles adding recurring expenses linked to a specific payment account."""
     print("\n--- Manage Recurring Expenses ---")
-    while True:
-        description = input("Enter new expense description (or type 'done' to finish): ")
-        if description.lower() == 'done':
-            break
-        try:
-            amount_str = input(f"Enter the monthly amount for '{description}: $")
-            amount = float(amount_str)
+    
+    # 1. Get and display a list of accounts to pay from
+    accounts = sim.get_accounts_list()
+    # You can't pay recurring bills with physical cash in this simulation
+    payable_accounts = {k: v for k, v in accounts.items() if v['type'] != 'CASH'}
 
-            # Call the function from engine
-            success, message = sim.add_recurring_expense(description, 'Bills', amount)
+    if not payable_accounts:
+        print("No accounts available to pay expenses from (e.g., Checking, Credit Card).")
+        input("\nPress Enter to return to the menu...")
+        return
+
+    print("Which account will these recurring expenses be paid from?")
+    account_options = list(payable_accounts.items())
+    for i, (acc_id, acc_data) in enumerate(account_options):
+        print(f"  [{i+1}] {acc_data['name']} (${acc_data['balance']:,.2f})")
+
+    try:
+        # 2. Get the user's choice for the payment account
+        choice_str = input("> ")
+        choice_idx = int(choice_str) - 1
+        
+        if not 0 <= choice_idx < len(account_options):
+            print("Invalid selection.")
+            input("\nPress Enter to return to the menu...")
+            return
+            
+        selected_account_id = account_options[choice_idx][0]
+        account_name = account_options[choice_idx][1]['name']
+        print(f"\nAdding expenses to be paid from '{account_name}'.")
+
+        # 3. Loop to add multiple expenses for this account
+        while True:
+            description = input("Enter new expense description (or type 'done' to finish): ")
+            if description.lower() == 'done':
+                break
+            
+            amount_str = input(f"Enter the monthly amount for '{description}': $")
+            amount = float(amount_str.replace(',',''))
+
+            # Call the updated engine function
+            success, message = sim.add_recurring_expense(description, amount, selected_account_id)
             print(f"  -> {message}")
-        except ValueError:
-            print("  -> Invalid amount. Please enter a number.")
 
-    print("\nFinished managing expenses.")
-    input("Press Enter to return to the main menu...")
+    except (ValueError, IndexError):
+        print("  -> Invalid input. Please enter valid numbers.")
+    
+    input("\nPress Enter to return to the main menu...")
 
 def handle_log_income(sim):
     """Handles user input for logging a new income transaction."""
@@ -161,33 +193,29 @@ def handle_view_accounts(sim):
         input("\nPress Enter to return to the main menu")
 
 def handle_view_ledger(sim):
-    """Displays the most recent entries from the financial ledger"""
+    """Displays the most recent entries from the financial ledger."""
     print("\n--- Financial Ledger (Last 50 Entries) ---")
     entries = sim.get_ledger_entries()
 
     if not entries:
         print("No transactions have been recorded yet.")
     else:
-        # Print a header for our ledger table
-        print(f"{'Date':<12} {'Account':<20} {'Description':<30} {'Debit':>12} {'Credit':>12}")
-        print("-" * 88)
+        # Adjusted widths for better alignment
+        print(f"{'Date':<12} {'Account':<25} {'Description':<25} {'Debit':>12} {'Credit':>12}")
+        print("-" * 90)
     
-        # Loop through each transaction entry and print its details
         for entry in entries:
-            # Format the date to show only YYYY-MM-DD
             date_str = entry['transaction_date'].strftime('%Y-%m-%d')
             account = entry['account']
             desc = entry['description']
+            debit_str = f"${entry['debit']:,.2f}" if entry['debit'] > 0 else ""
+            credit_str = f"${entry['credit']:,.2f}" if entry['credit'] > 0 else ""
 
-            # Prepare debit and credit amounts for clean printing
-            debit_str = f"${entry['debit']:.2f}" if entry['debit'] > 0 else ""
-            credit_str = f"${entry['credit']:.2f}" if entry['credit'] > 0 else ""
+            if len(desc) > 23:
+                desc = desc[:20] + "..."
 
-            # Truncate long descriptions to keep the tables aligned
-            if len(desc) > 28:
-                desc = desc[:25] + "..."
-
-            print(f"{date_str:<12} {account:<20} {desc:<30} {debit_str:>12} {credit_str:>12}")
+            # Adjusted f-string to match new widths
+            print(f"{date_str:<12} {account:<25} {desc:<25} {debit_str:>12} {credit_str:>12}")
     
     input("\nPress Enter to return to the main menu...")
 
@@ -213,22 +241,30 @@ def run_setup_wizard():
 
         try:
             balance_str = input(f"Current balance for '{name}': $")
-            balance = float(balance_str)
+            # --- NEW: Clean the input string ---
+            balance = float(balance_str.replace(',', ''))
+            
             # For credit cards, balance should be negative to represent debt
             if account_type == 'CREDIT_CARD' and balance > 0:
                 balance = -balance
+            
+            credit_limit = None 
+            if account_type == 'CREDIT_CARD':
+                limit_str = input(f"Credit limit for '{name}': $")
+                # --- NEW: Clean the input string ---
+                credit_limit = float(limit_str.replace(',', ''))
+
         except ValueError:
-            print("Invalid balance. Please enter a number.")
+            print("Invalid input. Please enter a number.")
             continue
         
-        accounts_to_add.append({'name': name, 'type': account_type, 'balance': balance})
+        accounts_to_add.append({'name': name, 'type': account_type, 'balance': balance, 'credit_limit': credit_limit})
         print(f"Account '{name}' added.")
 
         add_another = input("Add another account? (y/n): ").lower()
         if add_another != 'y':
             break
     
-    # --- Save all accounts to the database ---
     if not accounts_to_add:
         print("No accounts added. Exiting setup.")
         return
@@ -245,8 +281,8 @@ def run_setup_wizard():
 
         for acc in accounts_to_add:
             cursor.execute(
-                "INSERT INTO accounts (name, type, balance) VALUES (%s, %s, %s)",
-                (acc['name'], acc['type'], acc['balance'])
+                "INSERT INTO accounts (name, type, balance, credit_limit) VALUES (%s, %s, %s, %s)",
+                (acc['name'], acc['type'], acc['balance'], acc['credit_limit'])
             )
         
         conn.commit()
