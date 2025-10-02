@@ -47,7 +47,9 @@ TABLES['financial_ledger'] = (
     "  `description` VARCHAR(255),"
     "  `debit` DECIMAL(10, 2) DEFAULT 0.00,"
     "  `credit` DECIMAL(10, 2) DEFAULT 0.00,"
+    "  `category_id` INT DEFAULT NULL,"
     "  INDEX `idx_user_id_date` (`user_id`, `transaction_date` DESC),"
+    "  INDEX `idx_category_id` (`category_id`),"
     "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
     ") ENGINE=InnoDB")
 
@@ -77,6 +79,19 @@ TABLES['loans'] = (
     "  `status` ENUM('ACTIVE', 'PAID') NOT NULL DEFAULT 'ACTIVE',"
     "  INDEX `idx_user_id` (`user_id`),"
     "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    ") ENGINE=InnoDB")
+
+TABLES['expense_categories'] = (
+    "CREATE TABLE `expense_categories` ("
+    "  `category_id` INT AUTO_INCREMENT PRIMARY KEY,"
+    "  `user_id` INT NOT NULL,"
+    "  `name` VARCHAR(100) NOT NULL,"
+    "  `color` VARCHAR(7) DEFAULT '#6366f1',"
+    "  `is_default` BOOLEAN DEFAULT FALSE,"
+    "  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+    "  INDEX `idx_user_id` (`user_id`),"
+    "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,"
+    "  UNIQUE KEY `unique_user_category` (`user_id`, `name`)"
     ") ENGINE=InnoDB")
 
 

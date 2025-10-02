@@ -184,25 +184,37 @@ def add_single_account_api():
         return jsonify({"success": False, "message": message}), 500
 
 
-@app.route('/api/account/<int:account_id>', methods=['PUT'])
+@app.route('/api/account/<int:account_id>', methods=['PUT', 'DELETE'])
 @check_sim
 @login_required
-def update_account_api(account_id):
-    data = request.get_json()
-    new_name = data.get('name')
-    if not new_name:
-        return jsonify({"success": False, "message": "New name is required."}), 400
-    
-    success, message = sim.update_account_name(
-        user_id=current_user.id,
-        account_id=account_id,
-        new_name=new_name
-    )
-    if success:
-        return jsonify({"success": True, "message": message})
-    else:
-        status_code = 404 if "not found" in message else 500
-        return jsonify({"success": False, "message": message}), status_code
+def manage_account_api(account_id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        new_name = data.get('name')
+        if not new_name:
+            return jsonify({"success": False, "message": "New name is required."}), 400
+
+        success, message = sim.update_account_name(
+            user_id=current_user.id,
+            account_id=account_id,
+            new_name=new_name
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            status_code = 404 if "not found" in message else 500
+            return jsonify({"success": False, "message": message}), status_code
+
+    elif request.method == 'DELETE':
+        success, message = sim.delete_account(
+            user_id=current_user.id,
+            account_id=account_id
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            status_code = 404 if "not found" in message else 400
+            return jsonify({"success": False, "message": message}), status_code
 
 # --- RECURRING EXPENSES API ROUTES ---
 
@@ -242,7 +254,6 @@ def add_recurring_expense_api():
 @check_sim
 @login_required
 def manage_recurring_expense_api(expense_id):
-    print(f"DEBUG: manage_recurring_expense_api called with expense_id={expense_id}, method={request.method}")
     if request.method == 'PUT':
         data = request.get_json()
         description = data.get('description')
@@ -332,6 +343,104 @@ def get_n_day_average():
     except Exception as e:
         return jsonify({"error": f"An error occurred: {e}"}), 500
 
+# --- EXPENSE CATEGORIES API ROUTES ---
+
+@app.route('/api/expense_categories', methods=['GET'])
+@check_sim
+@login_required
+def get_expense_categories_api():
+    categories = sim.get_expense_categories(user_id=current_user.id)
+    return jsonify(categories)
+
+@app.route('/api/expense_categories', methods=['POST'])
+@check_sim
+@login_required
+def add_expense_category_api():
+    data = request.get_json()
+    name = data.get('name')
+    color = data.get('color', '#6366f1')
+
+    if not name:
+        return jsonify({"success": False, "message": "Category name is required."}), 400
+
+    success, message, category_id = sim.add_expense_category(
+        user_id=current_user.id,
+        name=name,
+        color=color
+    )
+    if success:
+        return jsonify({"success": True, "message": message, "category_id": category_id})
+    else:
+        return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/expense_categories/<int:category_id>', methods=['PUT', 'DELETE'])
+@check_sim
+@login_required
+def manage_expense_category_api(category_id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        name = data.get('name')
+        color = data.get('color')
+
+        if not all([name, color]):
+            return jsonify({"success": False, "message": "Name and color are required."}), 400
+
+        success, message = sim.update_expense_category(
+            user_id=current_user.id,
+            category_id=category_id,
+            name=name,
+            color=color
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+
+    elif request.method == 'DELETE':
+        success, message = sim.delete_expense_category(
+            user_id=current_user.id,
+            category_id=category_id
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/expense_analysis', methods=['GET'])
+@check_sim
+@login_required
+def get_expense_analysis_api():
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        analysis = sim.get_expense_analysis(
+            user_id=current_user.id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return jsonify(analysis)
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {e}"}), 500
+
+@app.route('/api/expense/category', methods=['PUT'])
+@check_sim
+@login_required
+def update_expense_category_api():
+    data = request.get_json()
+    transaction_uuid = data.get('transaction_uuid')
+    category_id = data.get('category_id')
+
+    if not transaction_uuid:
+        return jsonify({"success": False, "message": "transaction_uuid is required."}), 400
+
+    success, message = sim.update_expense_category(
+        user_id=current_user.id,
+        transaction_uuid=transaction_uuid,
+        category_id=category_id
+    )
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
 # --- ACTION ROUTES ---
 @app.route('/api/advance_time', methods=['POST'])
 @check_sim
@@ -349,9 +458,18 @@ def log_income_api():
     account_id = data.get('account_id')
     description = data.get('description')
     amount = data.get('amount')
+    transaction_date = data.get('transaction_date')  # Optional custom date
+
     if not all([account_id, description, amount]):
         return jsonify({"success": False, "message":"Missing required fields."}), 400
-    success, message = sim.log_income(user_id=current_user.id, account_id=account_id, description=description, amount=amount)
+
+    success, message = sim.log_income(
+        user_id=current_user.id,
+        account_id=account_id,
+        description=description,
+        amount=amount,
+        transaction_date=transaction_date
+    )
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
 @app.route('/api/expense', methods=['POST'])
@@ -362,9 +480,71 @@ def log_expense_api():
     account_id = data.get('account_id')
     description = data.get('description')
     amount = data.get('amount')
+    transaction_date = data.get('transaction_date')  # Optional custom date
+    category_id = data.get('category_id')  # Optional category
+
     if not all([account_id, description, amount]):
         return jsonify({"success": False, "message":"Missing required fields."}), 400
-    success, message = sim.log_expense(user_id=current_user.id, account_id=account_id, description=description, amount=amount)
+
+    success, message = sim.log_expense(
+        user_id=current_user.id,
+        account_id=account_id,
+        description=description,
+        amount=amount,
+        transaction_date=transaction_date,
+        category_id=category_id
+    )
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/revalue_asset', methods=['POST'])
+@check_sim
+@login_required
+def revalue_asset_api():
+    data = request.get_json()
+    account_id = data.get('account_id')
+    new_value = data.get('new_value')
+    description = data.get('description', 'Asset Revaluation')
+    if not all([account_id, new_value is not None]):
+        return jsonify({"success": False, "message":"Missing required fields."}), 400
+    success, message = sim.revalue_asset(user_id=current_user.id, account_id=account_id, new_value=new_value, description=description)
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/reverse_transaction', methods=['POST'])
+@check_sim
+@login_required
+def reverse_transaction_api():
+    data = request.get_json()
+    transaction_uuid = data.get('transaction_uuid')
+    if not transaction_uuid:
+        return jsonify({"success": False, "message":"Transaction UUID is required."}), 400
+    success, message = sim.reverse_transaction(user_id=current_user.id, transaction_uuid=transaction_uuid)
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/transfer', methods=['POST'])
+@check_sim
+@login_required
+def transfer_between_accounts_api():
+    data = request.get_json()
+    from_account_id = data.get('from_account_id')
+    to_account_id = data.get('to_account_id')
+    amount = data.get('amount')
+    description = data.get('description', 'Account Transfer')
+    transaction_date = data.get('transaction_date')
+
+    if not all([from_account_id, to_account_id, amount]):
+        return jsonify({"success": False, "message":"Missing required fields: from_account_id, to_account_id, and amount."}), 400
+
+    if from_account_id == to_account_id:
+        return jsonify({"success": False, "message":"Cannot transfer to the same account."}), 400
+
+    success, message = sim.transfer_between_accounts(
+        user_id=current_user.id,
+        from_account_id=from_account_id,
+        to_account_id=to_account_id,
+        amount=amount,
+        description=description,
+        transaction_date=transaction_date
+    )
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
 # --- RUN THE APP ---
