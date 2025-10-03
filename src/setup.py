@@ -1,11 +1,46 @@
+"""
+Perfect Books - Database Setup & Initialization
+
+This module creates and initializes the Perfect Books database schema.
+It drops and recreates the entire database, creating all tables with proper
+foreign key relationships and indexes.
+
+Database Schema Overview:
+------------------------
+- users: User authentication and account management
+- accounts: Financial accounts (checking, savings, credit cards, loans, etc.)
+- financial_ledger: Double-entry accounting ledger (immutable audit trail)
+- recurring_expenses: Automated monthly bill payments with categories
+- loans: Debt tracking with payment schedules
+- expense_categories: User-defined expense categorization with colors
+
+Key Design Features:
+- Foreign key constraints for referential integrity
+- Indexes on frequently queried columns for performance
+- Cascade deletes for user data (complete user removal)
+- Decimal precision for all monetary values
+- Category support for expense tracking and analytics
+
+⚠️  WARNING: This script completely drops and recreates the database!
+All existing data will be lost. Use only for initial setup or reset.
+
+Author: Matthew Jenkins
+License: MIT
+Related Project: Digital Harvest (Uses similar normalized schema design)
+"""
+
 import os
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import errorcode
 
+# Load database credentials from .env file
 load_dotenv()
 
-# --- DATABASE CONFIGURATION ---
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+
 DB_CONFIG = {
     'user': os.getenv('DB_USER'),
     'password': os.getenv('DB_PASSWORD'),
@@ -14,7 +49,10 @@ DB_CONFIG = {
 }
 DB_NAME = 'perfect_books'
 
-# --- SCHEMA DEFINITION ---
+# =============================================================================
+# SCHEMA DEFINITION
+# =============================================================================
+
 TABLES = {}
 
 TABLES['users'] = (
@@ -35,6 +73,20 @@ TABLES['accounts'] = (
     " `credit_limit` DECIMAL(12, 2) DEFAULT NULL,"
     " INDEX `idx_user_id` (`user_id`),"
     " FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    ") ENGINE=InnoDB")
+
+# Create expense_categories BEFORE tables that reference it
+TABLES['expense_categories'] = (
+    "CREATE TABLE `expense_categories` ("
+    "  `category_id` INT AUTO_INCREMENT PRIMARY KEY,"
+    "  `user_id` INT NOT NULL,"
+    "  `name` VARCHAR(100) NOT NULL,"
+    "  `color` VARCHAR(7) DEFAULT '#6366f1',"
+    "  `is_default` BOOLEAN DEFAULT FALSE,"
+    "  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+    "  INDEX `idx_user_id` (`user_id`),"
+    "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,"
+    "  UNIQUE KEY `unique_user_category` (`user_id`, `name`)"
     ") ENGINE=InnoDB")
 
 TABLES['financial_ledger'] = (
@@ -63,8 +115,11 @@ TABLES['recurring_expenses'] = (
     "  `due_day_of_month` INT NOT NULL DEFAULT 1,"
     "  `last_processed_date` DATE DEFAULT NULL,"
     "  `payment_account_id` INT DEFAULT NULL,"
+    "  `category_id` INT DEFAULT NULL,"
     "  INDEX `idx_user_id` (`user_id`),"
-    "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    "  INDEX `idx_category_id` (`category_id`),"
+    "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,"
+    "  FOREIGN KEY (category_id) REFERENCES expense_categories(category_id) ON DELETE SET NULL"
     ") ENGINE=InnoDB")
 
 TABLES['loans'] = (
@@ -79,19 +134,6 @@ TABLES['loans'] = (
     "  `status` ENUM('ACTIVE', 'PAID') NOT NULL DEFAULT 'ACTIVE',"
     "  INDEX `idx_user_id` (`user_id`),"
     "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
-    ") ENGINE=InnoDB")
-
-TABLES['expense_categories'] = (
-    "CREATE TABLE `expense_categories` ("
-    "  `category_id` INT AUTO_INCREMENT PRIMARY KEY,"
-    "  `user_id` INT NOT NULL,"
-    "  `name` VARCHAR(100) NOT NULL,"
-    "  `color` VARCHAR(7) DEFAULT '#6366f1',"
-    "  `is_default` BOOLEAN DEFAULT FALSE,"
-    "  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-    "  INDEX `idx_user_id` (`user_id`),"
-    "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,"
-    "  UNIQUE KEY `unique_user_category` (`user_id`, `name`)"
     ") ENGINE=InnoDB")
 
 

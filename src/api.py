@@ -1,3 +1,35 @@
+"""
+Perfect Books - Flask REST API
+
+This module provides a RESTful API for the Perfect Books personal finance application.
+It uses Flask with Flask-Login for session-based authentication and serves endpoints for:
+
+Authentication:
+- User registration and login
+- Session management with cookies
+
+Financial Operations:
+- Account management (CRUD)
+- Transaction logging (income, expenses, transfers)
+- Recurring expense automation with category support
+- Loan tracking and payments
+
+Analytics:
+- Financial summaries and net worth calculation
+- Transaction history with filtering
+- Category-based expense analysis
+
+Security:
+- Flask-Login for session management
+- User data segregation (all endpoints validate user_id)
+- CORS enabled for cross-origin requests (web interface)
+- bcrypt password hashing (handled by engine)
+
+Author: Matthew Jenkins
+License: MIT
+Related Project: Digital Harvest (Uses similar Flask API architecture)
+"""
+
 from flask import Flask, jsonify, request, send_from_directory, redirect, url_for, session
 from flask_cors import CORS
 from engine import BusinessSimulator
@@ -7,8 +39,15 @@ import datetime
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import os
 
-# Custom JSON encoder for handling special data types like Decimal and datetime
+
 class CustomEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder for handling Decimal and datetime objects.
+
+    Converts:
+    - Decimal to float for JSON serialization
+    - datetime/date to ISO 8601 format strings
+    """
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
@@ -16,15 +55,23 @@ class CustomEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# --- FLASK APP SETUP ---
+
+# =============================================================================
+# FLASK APPLICATION SETUP
+# =============================================================================
+
 app = Flask(__name__, static_url_path='', static_folder='../')
 app.json_encoder = CustomEncoder
-app.config['SECRET_KEY'] = 'a_super_secret_key_you_should_change'
+
+# Security configuration
+app.config['SECRET_KEY'] = 'a_super_secret_key_you_should_change'  # TODO: Change in production
 app.config['SESSION_COOKIE_SAMESITE'] = "None"
 app.config['SESSION_COOKIE_SECURE'] = True
+
+# Enable CORS for web interface (allows requests from different origins)
 CORS(app, supports_credentials=True)
 
-# --- STATELESS ENGINE INSTANCE ---
+# Initialize the stateless business simulator
 try:
     sim = BusinessSimulator()
 except Exception as e:
@@ -234,16 +281,18 @@ def add_recurring_expense_api():
     amount = data.get('amount')
     payment_account_id = data.get('payment_account_id')
     due_day_of_month = data.get('due_day_of_month')
+    category_id = data.get('category_id')  # Optional category
 
     if not all([description, amount, payment_account_id, due_day_of_month]):
         return jsonify({"success": False, "message": "All fields are required."}), 400
-    
+
     success, message = sim.add_recurring_expense(
         user_id=current_user.id,
         description=description,
         amount=amount,
         payment_account_id=payment_account_id,
-        due_day_of_month=due_day_of_month
+        due_day_of_month=due_day_of_month,
+        category_id=category_id
     )
     if success:
         return jsonify({"success": True, "message": message})
@@ -259,16 +308,18 @@ def manage_recurring_expense_api(expense_id):
         description = data.get('description')
         amount = data.get('amount')
         due_day_of_month = data.get('due_day_of_month')
+        category_id = data.get('category_id')  # Optional category
 
         if not all([description, amount, due_day_of_month]):
             return jsonify({"success": False, "message": "Description, amount, and due day are required."}), 400
-            
+
         success, message = sim.update_recurring_expense(
             user_id=current_user.id,
             expense_id=expense_id,
             description=description,
             amount=amount,
-            due_day_of_month=due_day_of_month
+            due_day_of_month=due_day_of_month,
+            category_id=category_id
         )
         if success:
             return jsonify({"success": True, "message": message})

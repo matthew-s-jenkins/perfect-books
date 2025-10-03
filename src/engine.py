@@ -1,3 +1,30 @@
+"""
+Perfect Books - Personal Finance Engine
+
+This module contains the core BusinessSimulator class that provides a stateless
+engine for managing personal finances with full double-entry accounting.
+
+The simulator provides a complete personal finance management system with:
+- Secure multi-user authentication with bcrypt password hashing
+- Double-entry accounting with immutable financial ledger
+- Multi-account management (checking, savings, credit cards, loans, etc.)
+- Income and expense tracking with categorization
+- Recurring expense automation with category support
+- Loan management with payment tracking
+- Time-based simulation for recurring transactions
+
+Key Design Principles:
+- **Stateless Architecture**: All state is stored in MySQL database
+- **User Segregation**: Complete data isolation between users
+- **Security First**: Password hashing, user validation on all operations
+- **Audit Trail**: Immutable ledger with transaction UUIDs
+- **BI-Ready**: Normalized schema for direct Power BI connection
+
+Author: Matthew Jenkins
+License: MIT
+Related Project: Digital Harvest (Business Simulation with similar accounting principles)
+"""
+
 import os
 from dotenv import load_dotenv
 import mysql.connector
@@ -6,9 +33,11 @@ import time
 from decimal import Decimal
 import bcrypt
 
+# Load environment variables from .env file
 load_dotenv()
 
 # --- DATABASE CONFIGURATION ---
+# These values are loaded from the .env file for security
 DB_CONFIG = {
     'user': os.getenv('DB_USER'),
     'password': os.getenv('DB_PASSWORD'),
@@ -17,11 +46,49 @@ DB_CONFIG = {
     'database': os.getenv('DB_NAME')
 }
 
+
 class BusinessSimulator:
+    """
+    Stateless personal finance engine for Perfect Books.
+
+    This class provides all business logic for the application without maintaining
+    state between method calls. All data is persisted in the MySQL database and
+    retrieved on demand.
+
+    The simulator enforces user segregation - every method that accesses data requires
+    a user_id parameter and validates that the user owns the data being accessed.
+
+    Methods are organized into functional groups:
+    - Authentication: User registration and login
+    - Account Management: Create, read, update accounts
+    - Transactions: Log income, expenses, transfers
+    - Recurring Expenses: Automated bill payment with categories
+    - Loans: Track debt and payment schedules
+    - Categories: Expense categorization and analytics
+    - Simulation: Time advancement for recurring transactions
+    - Analytics: Financial summaries and reporting
+
+    Example:
+        sim = BusinessSimulator()
+        user_data, msg = sim.login_user("john", "password123")
+        if user_data:
+            accounts = sim.get_accounts(user_data['user_id'])
+    """
+
     def __init__(self):
+        """Initialize the stateless simulator (no instance state needed)."""
         pass
-    
+
     def _get_db_connection(self):
+        """
+        Establish a new database connection.
+
+        Returns:
+            tuple: (connection, cursor) - MySQL connection and dictionary cursor
+
+        Note:
+            Callers are responsible for closing the connection and cursor.
+        """
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn, conn.cursor(dictionary=True, buffered=True)
 
@@ -35,15 +102,40 @@ class BusinessSimulator:
             return result['last_date']
         return datetime.datetime.now()
 
-    # --- USER AUTHENTICATION METHODS ---
+    # =============================================================================
+    # USER AUTHENTICATION METHODS
+    # =============================================================================
+
     def login_user(self, username, password):
+        """
+        Authenticate a user with username and password.
+
+        Uses bcrypt to securely verify the password against the stored hash.
+        Returns user data on successful authentication.
+
+        Args:
+            username (str): The username to authenticate
+            password (str): Plain-text password to verify
+
+        Returns:
+            tuple: (user_data dict, message str) where user_data contains:
+                   - user_id: Database ID of the user
+                   - username: Username
+                   - password_hash: Hashed password (for session management)
+                   Returns (None, error_message) on failure
+
+        Example:
+            user_data, msg = sim.login_user("alice", "mypassword")
+            if user_data:
+                print(f"Welcome, {user_data['username']}!")
+        """
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute("SELECT user_id, username, password_hash FROM users WHERE username = %s", (username,))
             user_data = cursor.fetchone()
             if not user_data:
                 return None, "Invalid username or password."
-            
+
             password_bytes = password.encode('utf-8')
             password_hash_bytes = user_data['password_hash'].encode('utf-8')
 
@@ -51,7 +143,7 @@ class BusinessSimulator:
                 return user_data, "Login successful."
             else:
                 return None, "Invalid username or password."
-        
+
         except Exception as e:
             return None, f"An error occurred: {e}"
         finally:
@@ -59,6 +151,31 @@ class BusinessSimulator:
             conn.close()
 
     def register_user(self, username, password):
+        """
+        Register a new user with secure password hashing.
+
+        Creates a new user account with bcrypt-hashed password and initializes
+        default expense categories for the user.
+
+        Args:
+            username (str): Desired username (must be unique)
+            password (str): Plain-text password (will be hashed)
+
+        Returns:
+            tuple: (success bool, message str, user_id int or None)
+                   - (True, "User registered successfully.", user_id) on success
+                   - (False, error_message, None) on failure
+
+        Note:
+            Default expense categories are automatically created including:
+            Uncategorized, Food & Dining, Transportation, Housing, Utilities,
+            Entertainment, Shopping, Healthcare, Personal, and Other.
+
+        Example:
+            success, msg, user_id = sim.register_user("bob", "securepass123")
+            if success:
+                print(f"User created with ID: {user_id}")
+        """
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute("SELECT user_id FROM users WHERE username = %s", (username,))
@@ -193,13 +310,45 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
     
+    # =============================================================================
+    # RECURRING EXPENSES METHODS
+    # =============================================================================
+
     def get_recurring_expenses(self, user_id):
+        """
+        Retrieve all recurring expenses for a user with category information.
+
+        Returns a list of recurring expenses including payment account and
+        expense category details (name and color) for UI display.
+
+        Args:
+            user_id (int): The user whose recurring expenses to fetch
+
+        Returns:
+            list: List of dictionaries containing:
+                  - expense_id: Unique ID
+                  - description: Expense description
+                  - amount: Monthly payment amount
+                  - due_day_of_month: Day of month when payment is due (1-31)
+                  - last_processed_date: Last date this expense was automatically paid
+                  - category_id: Category ID (may be None)
+                  - payment_account_name: Name of the payment account
+                  - category_name: Name of the expense category (may be None)
+                  - category_color: Hex color code for category (may be None)
+
+        Example:
+            expenses = sim.get_recurring_expenses(user_id=1)
+            for exp in expenses:
+                print(f"{exp['description']}: ${exp['amount']} on day {exp['due_day_of_month']}")
+        """
         conn, cursor = self._get_db_connection()
         try:
             query = """
-                SELECT r.expense_id, r.description, r.amount, r.due_day_of_month, r.last_processed_date, a.name AS payment_account_name
+                SELECT r.expense_id, r.description, r.amount, r.due_day_of_month, r.last_processed_date, r.category_id,
+                       a.name AS payment_account_name, c.name AS category_name, c.color AS category_color
                 FROM recurring_expenses r
                 JOIN accounts a ON r.payment_account_id = a.account_id
+                LEFT JOIN expense_categories c ON r.category_id = c.category_id
                 WHERE r.user_id = %s
                 ORDER BY r.due_day_of_month, r.description
             """
@@ -829,7 +978,42 @@ class BusinessSimulator:
                 if conn: conn.close()
 
 
-    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month):
+    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month, category_id=None):
+        """
+        Add a new monthly recurring expense with optional category.
+
+        Creates a recurring expense that will be automatically processed on the
+        specified day of each month during time advancement.
+
+        Args:
+            user_id (int): User creating the recurring expense
+            description (str): Description of the expense (e.g., "Rent", "Netflix")
+            amount (float/Decimal): Monthly payment amount (must be positive)
+            payment_account_id (int): Account ID to pay from (must belong to user)
+            due_day_of_month (int): Day of month when payment is due (1-31)
+            category_id (int, optional): Expense category ID (must belong to user)
+
+        Returns:
+            tuple: (success bool, message str)
+                   - (True, success_message) on success
+                   - (False, error_message) on failure
+
+        Validation:
+            - Amount must be positive
+            - Due day must be between 1 and 31
+            - Payment account must exist and belong to user
+            - Category (if provided) must exist and belong to user
+
+        Example:
+            success, msg = sim.add_recurring_expense(
+                user_id=1,
+                description="Netflix Subscription",
+                amount=15.99,
+                payment_account_id=1,
+                due_day_of_month=15,
+                category_id=6  # Entertainment category
+            )
+        """
         conn, cursor = self._get_db_connection()
         try:
             amount = Decimal(amount)
@@ -840,9 +1024,15 @@ class BusinessSimulator:
             if not cursor.fetchone():
                 return False, "Invalid payment account specified."
 
+            # Validate category if provided
+            if category_id:
+                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = %s AND user_id = %s", (category_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Invalid category specified."
+
             cursor.execute(
-                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month) VALUES (%s, %s, %s, 'MONTHLY', %s, %s)",
-                (user_id, description, amount, payment_account_id, due_day_of_month)
+                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id) VALUES (%s, %s, %s, 'MONTHLY', %s, %s, %s)",
+                (user_id, description, amount, payment_account_id, due_day_of_month, category_id)
             )
             conn.commit()
             return True, f"Recurring expense '{description}' added."
@@ -869,7 +1059,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month):
+    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month, category_id=None):
         conn, cursor = self._get_db_connection()
         try:
             amount = Decimal(amount)
@@ -886,10 +1076,16 @@ class BusinessSimulator:
             if str(existing['user_id']) != str(user_id):
                 return False, "You do not have permission to update this expense."
 
+            # Validate category if provided
+            if category_id:
+                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = %s AND user_id = %s", (category_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Invalid category specified."
+
             # Perform the update
             cursor.execute(
-                "UPDATE recurring_expenses SET description = %s, amount = %s, due_day_of_month = %s WHERE expense_id = %s AND user_id = %s",
-                (description, amount, due_day_of_month, expense_id, user_id)
+                "UPDATE recurring_expenses SET description = %s, amount = %s, due_day_of_month = %s, category_id = %s WHERE expense_id = %s AND user_id = %s",
+                (description, amount, due_day_of_month, category_id, expense_id, user_id)
             )
 
             conn.commit()
@@ -1060,11 +1256,12 @@ class BusinessSimulator:
 
                         if is_due_for_payment:
                             success, message = self.log_expense(
-                                user_id, 
-                                expense['payment_account_id'], 
-                                expense['description'], 
+                                user_id,
+                                expense['payment_account_id'],
+                                expense['description'],
                                 expense['amount'],
                                 transaction_date=current_day,
+                                category_id=expense.get('category_id'),  # Pass category from recurring expense
                                 cursor=cursor # Pass the existing cursor
                             )
                             
