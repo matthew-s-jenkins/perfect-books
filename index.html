@@ -915,35 +915,48 @@
 
         function RecurringExpensesPage({ accounts, onDataChange }) {
             const [expenses, setExpenses] = useState([]);
+            const [categories, setCategories] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [error, setError] = useState('');
-            
+
             const [newDescription, setNewDescription] = useState('');
             const [newAmount, setNewAmount] = useState('');
             const [newPaymentAccountId, setNewPaymentAccountId] = useState('');
             const [newDueDay, setNewDueDay] = useState('1');
+            const [newCategoryId, setNewCategoryId] = useState('');
 
             const [editingId, setEditingId] = useState(null);
             const [editingDescription, setEditingDescription] = useState('');
             const [editingAmount, setEditingAmount] = useState('');
             const [editingDueDay, setEditingDueDay] = useState('');
+            const [editingCategoryId, setEditingCategoryId] = useState('');
 
             useEffect(() => {
                 let mounted = true;
-                const loadExpenses = async () => {
+                const loadData = async () => {
                     setIsLoading(true);
                     try {
-                        const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses`);
-                        if (!response.ok) throw new Error('Failed to fetch recurring expenses.');
-                        const data = await response.json();
-                        if (mounted) setExpenses(data);
+                        const [expensesRes, categoriesRes] = await Promise.all([
+                            fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses`),
+                            fetchWithCredentials(`${API_BASE_URL}/api/expense_categories`)
+                        ]);
+                        if (!expensesRes.ok) throw new Error('Failed to fetch recurring expenses.');
+                        if (!categoriesRes.ok) throw new Error('Failed to fetch categories.');
+
+                        const expensesData = await expensesRes.json();
+                        const categoriesData = await categoriesRes.json();
+
+                        if (mounted) {
+                            setExpenses(expensesData);
+                            setCategories(categoriesData);
+                        }
                     } catch (err) {
                         if (mounted) setError(err.message);
                     } finally {
                         if (mounted) setIsLoading(false);
                     }
                 };
-                loadExpenses();
+                loadData();
                 return () => { mounted = false; };
             }, []);
 
@@ -971,11 +984,12 @@
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            description: newDescription, 
-                            amount: parseFloat(newAmount), 
+                        body: JSON.stringify({
+                            description: newDescription,
+                            amount: parseFloat(newAmount),
                             payment_account_id: parseInt(newPaymentAccountId),
-                            due_day_of_month: parseInt(newDueDay)
+                            due_day_of_month: parseInt(newDueDay),
+                            category_id: newCategoryId ? parseInt(newCategoryId) : null
                         }),
                     });
                     const result = await response.json();
@@ -984,6 +998,7 @@
                         setNewAmount('');
                         setNewPaymentAccountId('');
                         setNewDueDay('1');
+                        setNewCategoryId('');
                         onDataChange();
                     } else { setError(result.message); }
                 } catch (err) { setError('An error occurred. Please try again.'); }
@@ -994,6 +1009,7 @@
                 setEditingDescription(expense.description);
                 setEditingAmount(expense.amount);
                 setEditingDueDay(expense.due_day_of_month);
+                setEditingCategoryId(expense.category_id || '');
             };
 
             const handleCancelEdit = () => setEditingId(null);
@@ -1003,10 +1019,11 @@
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_expenses/${expenseId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            description: editingDescription, 
+                        body: JSON.stringify({
+                            description: editingDescription,
                             amount: parseFloat(editingAmount),
-                            due_day_of_month: parseInt(editingDueDay)
+                            due_day_of_month: parseInt(editingDueDay),
+                            category_id: editingCategoryId ? parseInt(editingCategoryId) : null
                         })
                     });
                     if (response.ok) {
@@ -1031,6 +1048,7 @@
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Description</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Amount</th>
                                             <th className="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Due Day</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Category</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Payment Account</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Last Paid</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Actions</th>
@@ -1044,6 +1062,12 @@
                                                         <td className="px-2 py-2"><input type="text" value={editingDescription} onChange={e => setEditingDescription(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-full"/></td>
                                                         <td className="px-2 py-2"><input type="number" step="0.01" value={editingAmount} onChange={e => setEditingAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-24 text-right"/></td>
                                                         <td className="px-2 py-2"><input type="number" value={editingDueDay} onChange={e => setEditingDueDay(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-16 text-center"/></td>
+                                                        <td className="px-2 py-2">
+                                                            <select value={editingCategoryId} onChange={e => setEditingCategoryId(e.target.value)} className="bg-gray-700 text-white p-1 rounded text-xs w-full">
+                                                                <option value="">No Category</option>
+                                                                {categories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
+                                                            </select>
+                                                        </td>
                                                         <td className="px-2 py-2 text-sm text-gray-500">{exp.payment_account_name}</td>
                                                         <td className="px-2 py-2"></td>
                                                         <td className="px-2 py-2 text-sm text-right space-x-2">
@@ -1056,6 +1080,15 @@
                                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-white">{exp.description}</td>
                                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-mono text-red-400">{parseFloat(exp.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
                                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-center">{exp.due_day_of_month}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                                            {exp.category_name ? (
+                                                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium" style={{backgroundColor: exp.category_color + '20', color: exp.category_color}}>
+                                                                    {exp.category_name}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-500 text-xs">No Category</span>
+                                                            )}
+                                                        </td>
                                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-400">{exp.payment_account_name}</td>
                                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-400">{exp.last_processed_date ? new Date(exp.last_processed_date).toLocaleDateString('en-CA') : 'Never'}</td>
                                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-right space-x-2">
@@ -1089,11 +1122,22 @@
                                     <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" />
                                 </div>
                             </div>
-                            <div className="mb-6">
+                            <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Pay From Account</label>
                                 <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
                                     <option value="">-- Select an Account --</option>
                                     {accounts.filter(acc => acc.type !== 'CASH').map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-gray-400 mb-2">Category (Optional)</label>
+                                <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
+                                    <option value="">-- No Category --</option>
+                                    {categories.map(cat => (
+                                        <option key={cat.category_id} value={cat.category_id}>
+                                            {cat.name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                              {error && <p className="text-red-400 mb-4 text-center">{error}</p>}
