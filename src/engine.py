@@ -345,6 +345,7 @@ class BusinessSimulator:
         try:
             query = """
                 SELECT r.expense_id, r.description, r.amount, r.due_day_of_month, r.last_processed_date, r.category_id,
+                       r.is_variable, r.estimated_amount,
                        a.name AS payment_account_name, c.name AS category_name, c.color AS category_color
                 FROM recurring_expenses r
                 JOIN accounts a ON r.payment_account_id = a.account_id
@@ -498,13 +499,13 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_expense_category(self, user_id, transaction_uuid, category_id):
+    def update_transaction_category(self, user_id, transaction_uuid, category_id):
         """Update the category for an expense transaction."""
         conn, cursor = self._get_db_connection()
         try:
-            # Verify the transaction belongs to the user and is an expense
+            # Verify the transaction belongs to the user and is an expense (has debit entry)
             cursor.execute(
-                "SELECT entry_id FROM financial_ledger WHERE user_id = %s AND transaction_uuid = %s AND account = 'Expenses' LIMIT 1",
+                "SELECT entry_id FROM financial_ledger WHERE user_id = %s AND transaction_uuid = %s AND debit > 0 LIMIT 1",
                 (user_id, transaction_uuid)
             )
             result = cursor.fetchone()
@@ -512,9 +513,9 @@ class BusinessSimulator:
             if not result:
                 return False, "Expense transaction not found or you don't have permission."
 
-            # Update the category for the expense entry
+            # Update the category for all expense entries with this transaction_uuid
             cursor.execute(
-                "UPDATE financial_ledger SET category_id = %s WHERE user_id = %s AND transaction_uuid = %s AND account = 'Expenses'",
+                "UPDATE financial_ledger SET category_id = %s WHERE user_id = %s AND transaction_uuid = %s AND debit > 0",
                 (category_id, user_id, transaction_uuid)
             )
 
@@ -1059,11 +1060,110 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month, category_id=None):
+    # =============================================================================
+    # RECURRING INCOME METHODS
+    # =============================================================================
+
+    def get_recurring_income(self, user_id):
+        """Get all recurring income entries for a user."""
         conn, cursor = self._get_db_connection()
         try:
-            amount = Decimal(amount)
-            if amount <= 0: return False, "Amount must be positive."
+            query = """
+                SELECT ri.income_id, ri.description, ri.amount, ri.deposit_day_of_month, ri.last_processed_date,
+                       ri.is_variable, ri.estimated_amount,
+                       a.name AS deposit_account_name
+                FROM recurring_income ri
+                JOIN accounts a ON ri.deposit_account_id = a.account_id
+                WHERE ri.user_id = %s
+                ORDER BY ri.deposit_day_of_month, ri.description
+            """
+            cursor.execute(query, (user_id,))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def add_recurring_income(self, user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable=False, estimated_amount=None):
+        """Add a new recurring income entry."""
+        conn, cursor = self._get_db_connection()
+        try:
+            amount = Decimal(amount) if amount else Decimal(0)
+            if not is_variable and amount <= 0:
+                return False, "Amount must be positive for fixed income."
+            if not 1 <= deposit_day_of_month <= 31:
+                return False, "Deposit day must be between 1 and 31."
+
+            cursor.execute(
+                "INSERT INTO recurring_income (user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable, estimated_amount) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable, estimated_amount)
+            )
+            conn.commit()
+            return True, "Recurring income added successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_recurring_income(self, user_id, income_id):
+        """Delete a recurring income entry."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("DELETE FROM recurring_income WHERE income_id = %s AND user_id = %s", (income_id, user_id))
+            if cursor.rowcount == 0:
+                return False, "Income not found or you do not have permission to delete it."
+
+            conn.commit()
+            return True, "Recurring income deleted successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_recurring_income(self, user_id, income_id, description, amount, deposit_day_of_month, is_variable=False, estimated_amount=None):
+        """Update a recurring income entry."""
+        conn, cursor = self._get_db_connection()
+        try:
+            amount = Decimal(amount) if amount else Decimal(0)
+            if not is_variable and amount <= 0:
+                return False, "Amount must be positive for fixed income."
+            if not 1 <= deposit_day_of_month <= 31:
+                return False, "Deposit day must be between 1 and 31."
+
+            cursor.execute(
+                "UPDATE recurring_income SET description = %s, amount = %s, deposit_day_of_month = %s, is_variable = %s, estimated_amount = %s "
+                "WHERE income_id = %s AND user_id = %s",
+                (description, amount, deposit_day_of_month, is_variable, estimated_amount, income_id, user_id)
+            )
+
+            if cursor.rowcount == 0:
+                return False, "Income not found or you do not have permission to update it."
+
+            conn.commit()
+            return True, "Recurring income updated successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month, category_id=None, is_variable=False, estimated_amount=None):
+        conn, cursor = self._get_db_connection()
+        try:
+            # Convert amount to Decimal if provided
+            if amount is not None:
+                amount = Decimal(amount)
+                if amount < 0: return False, "Amount cannot be negative."
+
+            # For non-variable expenses, amount is required
+            if not is_variable and (amount is None or amount == 0):
+                return False, "Amount is required for fixed expenses."
+
             if not 1 <= due_day_of_month <= 31: return False, "Due day must be between 1 and 31."
 
             # Check if expense exists and belongs to this user
@@ -1082,10 +1182,14 @@ class BusinessSimulator:
                 if not cursor.fetchone():
                     return False, "Invalid category specified."
 
+            # Convert estimated_amount if provided
+            if estimated_amount:
+                estimated_amount = Decimal(estimated_amount)
+
             # Perform the update
             cursor.execute(
-                "UPDATE recurring_expenses SET description = %s, amount = %s, due_day_of_month = %s, category_id = %s WHERE expense_id = %s AND user_id = %s",
-                (description, amount, due_day_of_month, category_id, expense_id, user_id)
+                "UPDATE recurring_expenses SET description = %s, amount = %s, due_day_of_month = %s, category_id = %s, is_variable = %s, estimated_amount = %s WHERE expense_id = %s AND user_id = %s",
+                (description, amount, due_day_of_month, category_id, is_variable, estimated_amount, expense_id, user_id)
             )
 
             conn.commit()
@@ -1228,22 +1332,442 @@ class BusinessSimulator:
                 cursor.close()
                 conn.close()
     
+    # =============================================================================
+    # PENDING TRANSACTIONS METHODS (Variable Expenses & Interest Approval)
+    # =============================================================================
+
+    def get_pending_transactions(self, user_id):
+        """
+        Get all pending transaction approvals for a user.
+
+        Returns pending transactions (variable expenses and credit card interest)
+        that require user approval before being processed.
+
+        Args:
+            user_id (int): The user ID
+
+        Returns:
+            list: List of dictionaries containing pending transaction details
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            query = """
+                SELECT p.pending_id, p.description, p.estimated_amount,
+                       p.due_date, p.payment_account_id, p.category_id,
+                       p.transaction_type, p.related_account_id,
+                       a.name AS account_name,
+                       c.name AS category_name, c.color AS category_color,
+                       p.recurring_expense_id
+                FROM pending_transactions p
+                JOIN accounts a ON p.payment_account_id = a.account_id
+                LEFT JOIN expense_categories c ON p.category_id = c.category_id
+                WHERE p.user_id = %s AND p.status = 'PENDING'
+                ORDER BY p.due_date ASC
+            """
+            cursor.execute(query, (user_id,))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def approve_pending_transaction(self, user_id, pending_id, actual_amount):
+        """
+        Approve a pending transaction and process the payment.
+
+        This handles both variable recurring expenses and credit card interest charges.
+
+        Args:
+            user_id (int): The user ID
+            pending_id (int): The pending transaction ID
+            actual_amount (Decimal): The actual amount to charge
+
+        Returns:
+            tuple: (success bool, message str)
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get pending transaction
+            cursor.execute("""
+                SELECT * FROM pending_transactions
+                WHERE pending_id = %s AND user_id = %s AND status = 'PENDING'
+            """, (pending_id, user_id))
+
+            pending = cursor.fetchone()
+            if not pending:
+                return False, "Pending transaction not found."
+
+            # Process based on transaction type
+            if pending['transaction_type'] == 'EXPENSE':
+                # Log the expense
+                success, message = self.log_expense(
+                    user_id=user_id,
+                    account_id=pending['payment_account_id'],
+                    description=pending['description'],
+                    amount=actual_amount,
+                    transaction_date=pending['due_date'],
+                    category_id=pending['category_id'],
+                    cursor=cursor
+                )
+
+                if not success:
+                    return False, f"Failed to log expense: {message}"
+
+            elif pending['transaction_type'] == 'INCOME':
+                # Log the income
+                success, message = self.log_income(
+                    user_id=user_id,
+                    account_id=pending['payment_account_id'],
+                    description=pending['description'],
+                    amount=actual_amount,
+                    transaction_date=pending['due_date'],
+                    cursor=cursor
+                )
+
+                if not success:
+                    return False, f"Failed to log income: {message}"
+
+            elif pending['transaction_type'] == 'INTEREST':
+                # Process credit card interest
+                from uuid import uuid4
+                txn_uuid = str(uuid4())
+
+                # Get account name
+                cursor.execute("SELECT name FROM accounts WHERE account_id = %s",
+                             (pending['related_account_id'],))
+                card_account = cursor.fetchone()
+
+                # DR Interest Expense
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, 'Interest Expense', %s, %s, 0, NULL)
+                """, (user_id, txn_uuid, pending['due_date'], pending['description'], actual_amount))
+
+                # CR Credit Card (increases debt)
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                """, (user_id, txn_uuid, pending['due_date'], card_account['name'],
+                     pending['description'], actual_amount))
+
+                # Update account balance
+                cursor.execute("""
+                    UPDATE accounts
+                    SET balance = balance - %s, last_interest_date = %s
+                    WHERE account_id = %s
+                """, (actual_amount, pending['due_date'], pending['related_account_id']))
+
+            # Update pending transaction
+            cursor.execute("""
+                UPDATE pending_transactions
+                SET status = 'APPROVED', actual_amount = %s, resolved_at = NOW()
+                WHERE pending_id = %s
+            """, (actual_amount, pending_id))
+
+            # Update recurring expense last_processed_date if applicable
+            if pending['recurring_expense_id']:
+                cursor.execute("""
+                    UPDATE recurring_expenses
+                    SET last_processed_date = %s
+                    WHERE expense_id = %s
+                """, (pending['due_date'], pending['recurring_expense_id']))
+
+            conn.commit()
+            return True, "Transaction approved and processed."
+
+        except Exception as e:
+            conn.rollback()
+            return False, f"Error: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def reject_pending_transaction(self, user_id, pending_id):
+        """
+        Reject/dismiss a pending transaction without processing it.
+
+        Args:
+            user_id (int): The user ID
+            pending_id (int): The pending transaction ID
+
+        Returns:
+            tuple: (success bool, message str)
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("""
+                UPDATE pending_transactions
+                SET status = 'REJECTED', resolved_at = NOW()
+                WHERE pending_id = %s AND user_id = %s AND status = 'PENDING'
+            """, (pending_id, user_id))
+
+            if cursor.rowcount == 0:
+                return False, "Pending transaction not found."
+
+            conn.commit()
+            return True, "Transaction rejected."
+        except Exception as e:
+            conn.rollback()
+            return False, f"Error: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =============================================================================
+    # LOAN PAYMENT METHODS (Principal vs Interest Split)
+    # =============================================================================
+
+    def make_loan_payment(self, user_id, loan_id, payment_amount, payment_account_id, payment_date=None, escrow_amount=None):
+        """
+        Make a loan payment with proper principal/interest split and optional escrow.
+
+        Args:
+            user_id (int): The user ID
+            loan_id (int): The loan's ACCOUNT ID from the 'accounts' table.
+            payment_amount (Decimal): Total payment amount
+            payment_account_id (int): Account to pay from
+            payment_date (date, optional): Payment date (defaults to today)
+            escrow_amount (Decimal, optional): Escrow amount to track separately
+
+        Returns:
+            tuple: (success bool, message str)
+        """
+        escrow_amount = Decimal(escrow_amount) if escrow_amount else Decimal('0')
+        conn, cursor = self._get_db_connection()
+        try:
+            if payment_date is None:
+                payment_date = self._get_user_current_date(cursor, user_id)
+
+            # Get loan account details directly from accounts table
+            cursor.execute("""
+                SELECT account_id, name, balance
+                FROM accounts
+                WHERE account_id = %s AND user_id = %s AND type = 'LOAN'
+            """, (loan_id, user_id))
+
+            loan_account = cursor.fetchone()
+            if not loan_account:
+                return False, "Loan not found."
+
+            # Calculate interest for this period based on the current balance (which is negative)
+            # Using default 5% APR for now since accounts table doesn't have interest_rate column
+            current_outstanding_balance = abs(Decimal(loan_account['balance']))
+            default_apr = Decimal('5.0')  # 5% APR
+            monthly_rate = default_apr / Decimal(100) / Decimal(12)
+            interest_amount = current_outstanding_balance * monthly_rate
+            interest_amount = interest_amount.quantize(Decimal('0.01'))
+
+            # Calculate principal
+            payment_amount = Decimal(payment_amount)
+            principal_amount = payment_amount - interest_amount
+
+            if principal_amount < 0:
+                return False, f"Payment doesn't cover interest. Minimum payment: ${interest_amount:.2f}"
+
+            # Generate UUID for transaction
+            from uuid import uuid4
+            txn_uuid = str(uuid4())
+
+            # Create ledger entries...
+            # 1. DR Loan (reduces liability)
+            cursor.execute("""
+                INSERT INTO financial_ledger
+                (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                VALUES (%s, %s, %s, %s, 'Loan Payment - Principal', %s, 0, NULL)
+            """, (user_id, txn_uuid, payment_date, loan_account['name'], principal_amount))
+
+            # 2. DR Interest Expense
+            cursor.execute("""
+                INSERT INTO financial_ledger
+                (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                VALUES (%s, %s, %s, 'Interest Expense', 'Loan Payment - Interest', %s, 0, NULL)
+            """, (user_id, txn_uuid, payment_date, interest_amount))
+
+            # 3. Handle escrow if provided
+            total_cash_outflow = payment_amount + escrow_amount
+
+            if escrow_amount > 0:
+                # DR Escrow Account (asset)
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, 'Escrow', 'Loan Payment - Escrow', %s, 0, NULL)
+                """, (user_id, txn_uuid, payment_date, escrow_amount))
+
+            # 4. CR Payment Account (total cash out)
+            cursor.execute("SELECT name FROM accounts WHERE account_id = %s", (payment_account_id,))
+            payment_acct = cursor.fetchone()
+            cursor.execute("""
+                INSERT INTO financial_ledger
+                (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                VALUES (%s, %s, %s, %s, 'Loan Payment', 0, %s, NULL)
+            """, (user_id, txn_uuid, payment_date, payment_acct['name'], total_cash_outflow))
+
+            # Update account balances directly for efficiency
+            cursor.execute("UPDATE accounts SET balance = balance + %s WHERE account_id = %s", (principal_amount, loan_id))
+            cursor.execute("UPDATE accounts SET balance = balance - %s WHERE account_id = %s", (total_cash_outflow, payment_account_id))
+
+            # Update escrow account balance if escrow payment made
+            if escrow_amount > 0:
+                cursor.execute("""
+                    UPDATE accounts
+                    SET balance = balance + %s
+                    WHERE user_id = %s AND name = 'Escrow' AND type = 'CHECKING'
+                """, (escrow_amount, user_id))
+
+            # Fetch new loan balance
+            cursor.execute("SELECT balance FROM accounts WHERE account_id = %s", (loan_id,))
+            new_balance = abs(cursor.fetchone()['balance'])
+
+            # Note: Not updating loans/loan_payments tables since they may not exist
+            # All transaction history is tracked in the financial_ledger table
+
+            conn.commit()
+
+            msg = f"Payment processed: ${principal_amount:,.2f} principal, ${interest_amount:,.2f} interest"
+            if escrow_amount > 0:
+                msg += f", ${escrow_amount:,.2f} escrow"
+            msg += f". New loan balance: ${new_balance:,.2f}"
+            return True, msg
+
+        except Exception as e:
+            conn.rollback()
+            print(f"ERROR in make_loan_payment: {e}")
+            import traceback
+            traceback.print_exc()
+            return False, f"An unexpected error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_loan_payment_history(self, user_id, loan_id):
+        """
+        Get payment history for a specific loan.
+
+        Args:
+            user_id (int): The user ID
+            loan_id (int): The loan ID
+
+        Returns:
+            list: List of payment records
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("""
+                SELECT payment_date, total_payment, principal_amount,
+                       interest_amount, remaining_balance
+                FROM loan_payments
+                WHERE loan_id = %s AND user_id = %s
+                ORDER BY payment_date DESC
+            """, (loan_id, user_id))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =============================================================================
+    # CREDIT CARD INTEREST METHODS
+    # =============================================================================
+
+    def calculate_credit_card_interest(self, user_id, card_account_id):
+        """
+        Calculate pending credit card interest (creates pending transaction for approval).
+
+        Only calculates interest if:
+        - Account type is CREDIT_CARD
+        - Balance is negative (carrying debt)
+        - Last interest date was over 30 days ago (or never)
+
+        Args:
+            user_id (int): The user ID
+            card_account_id (int): The credit card account ID
+
+        Returns:
+            tuple: (success bool, message str)
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get user's current date
+            current_date = self._get_user_current_date(cursor, user_id)
+
+            cursor.execute("""
+                SELECT * FROM accounts
+                WHERE account_id = %s AND user_id = %s AND type = 'CREDIT_CARD'
+            """, (card_account_id, user_id))
+
+            card = cursor.fetchone()
+            if not card:
+                return False, "Credit card account not found."
+
+            # Check if interest is due
+            if card['last_interest_date']:
+                days_since = (current_date - card['last_interest_date']).days
+                if days_since < 30:
+                    return False, f"Interest not yet due. Last charged {days_since} days ago."
+
+            # Only charge if carrying a balance
+            if card['balance'] >= 0:
+                return True, "No balance, no interest charged."
+
+            # Calculate interest
+            monthly_rate = Decimal(card['interest_rate']) / Decimal(100) / Decimal(12)
+            balance_owed = abs(card['balance'])
+            interest = balance_owed * monthly_rate
+            interest = interest.quantize(Decimal('0.01'))
+
+            # Create pending transaction for approval
+            cursor.execute("""
+                INSERT INTO pending_transactions
+                (user_id, recurring_expense_id, description, estimated_amount,
+                 due_date, payment_account_id, category_id, status, transaction_type, related_account_id)
+                VALUES (%s, NULL, %s, %s, CURDATE(), %s, NULL, 'PENDING', 'INTEREST', %s)
+            """, (
+                user_id,
+                f"Interest Charge - {card['name']}",
+                interest,
+                card_account_id,  # payment_account_id (the card itself)
+                card_account_id   # related_account_id (for reference)
+            ))
+
+            conn.commit()
+            return True, f"Interest pending approval: ${interest:,.2f} (Balance: ${balance_owed:,.2f} @ {card['interest_rate']:.2f}% APR)"
+
+        except Exception as e:
+            conn.rollback()
+            return False, f"Error: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =============================================================================
+    # TIME SIMULATION METHODS
+    # =============================================================================
+
     def advance_time(self, user_id, days_to_advance=1):
+        import calendar
         conn, cursor = self._get_db_connection()
         try:
             simulation_start_date = self._get_user_current_date(cursor, user_id)
             processing_log = []
 
-            # Fetch recurring expenses ONCE before the loop
+            # Fetch recurring expenses and income ONCE before the loop
             cursor.execute("SELECT * FROM recurring_expenses WHERE user_id = %s", (user_id,))
             recurring_expenses = cursor.fetchall()
-            
+
+            cursor.execute("SELECT * FROM recurring_income WHERE user_id = %s", (user_id,))
+            recurring_income = cursor.fetchall()
+
             for i in range(days_to_advance):
                 current_day = simulation_start_date + datetime.timedelta(days=i + 1)
-                
+                days_in_month = calendar.monthrange(current_day.year, current_day.month)[1]
+
                 for expense in recurring_expenses:
-                    # We only care about processing the bill on its due day.
-                    if current_day.day == expense['due_day_of_month']:
+                    # Handle bills due on days that don't exist in current month (e.g., day 31 in Feb)
+                    # Process on last day of month if due day is greater than days in month
+                    effective_due_day = min(expense['due_day_of_month'], days_in_month)
+
+                    if current_day.day == effective_due_day:
                         is_due_for_payment = False
                         last_processed = expense.get('last_processed_date') # Use .get() for safety
 
@@ -1255,26 +1779,113 @@ class BusinessSimulator:
                             is_due_for_payment = True
 
                         if is_due_for_payment:
-                            success, message = self.log_expense(
-                                user_id,
-                                expense['payment_account_id'],
-                                expense['description'],
-                                expense['amount'],
-                                transaction_date=current_day,
-                                category_id=expense.get('category_id'),  # Pass category from recurring expense
-                                cursor=cursor # Pass the existing cursor
-                            )
-                            
-                            if success:
+                            # Check if this is a variable expense
+                            if expense.get('is_variable'):
+                                # CREATE PENDING TRANSACTION instead of auto-paying
+                                cursor.execute("""
+                                    INSERT INTO pending_transactions
+                                    (user_id, recurring_expense_id, description, estimated_amount,
+                                     due_date, payment_account_id, category_id, status, transaction_type)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', 'EXPENSE')
+                                """, (
+                                    user_id,
+                                    expense['expense_id'],
+                                    expense['description'],
+                                    expense.get('estimated_amount') or expense['amount'],
+                                    current_day.date(),
+                                    expense['payment_account_id'],
+                                    expense.get('category_id')
+                                ))
+
+                                # Update last_processed_date so it doesn't create duplicate pending transactions
                                 cursor.execute(
                                     "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
                                     (current_day.date(), expense['expense_id'])
                                 )
-                                # Update the in-memory record to prevent re-payment in the same run
                                 expense['last_processed_date'] = current_day.date()
-                                processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Paid {expense['description']} (${expense['amount']}).")
+                                processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: {expense['description']} requires approval (variable expense)")
                             else:
-                                processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to pay {expense['description']} - {message}")
+                                # AUTO-PAY as before (existing code)
+                                success, message = self.log_expense(
+                                    user_id,
+                                    expense['payment_account_id'],
+                                    expense['description'],
+                                    expense['amount'],
+                                    transaction_date=current_day,
+                                    category_id=expense.get('category_id'),  # Pass category from recurring expense
+                                    cursor=cursor # Pass the existing cursor
+                                )
+
+                                if success:
+                                    cursor.execute(
+                                        "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
+                                        (current_day.date(), expense['expense_id'])
+                                    )
+                                    # Update the in-memory record to prevent re-payment in the same run
+                                    expense['last_processed_date'] = current_day.date()
+                                    processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Paid {expense['description']} (${expense['amount']}).")
+                                else:
+                                    processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to pay {expense['description']} - {message}")
+
+                # Process recurring income
+                for income in recurring_income:
+                    # Handle income due on days that don't exist in current month
+                    income_effective_due_day = min(income['deposit_day_of_month'], days_in_month)
+
+                    if current_day.day == income_effective_due_day:
+                        is_due_for_deposit = False
+                        last_processed = income.get('last_processed_date')
+
+                        if not last_processed:
+                            is_due_for_deposit = True
+                        elif (current_day.year, current_day.month) > (last_processed.year, last_processed.month):
+                            is_due_for_deposit = True
+
+                        if is_due_for_deposit:
+                            # Check if this is a variable income
+                            if income.get('is_variable'):
+                                # CREATE PENDING TRANSACTION instead of auto-depositing
+                                cursor.execute("""
+                                    INSERT INTO pending_transactions
+                                    (user_id, recurring_income_id, description, estimated_amount,
+                                     due_date, payment_account_id, status, transaction_type)
+                                    VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', 'INCOME')
+                                """, (
+                                    user_id,
+                                    income['income_id'],
+                                    income['description'],
+                                    income.get('estimated_amount') or income['amount'],
+                                    current_day.date(),
+                                    income['deposit_account_id']
+                                ))
+
+                                # Update last_processed_date so it doesn't create duplicate pending transactions
+                                cursor.execute(
+                                    "UPDATE recurring_income SET last_processed_date = %s WHERE income_id = %s",
+                                    (current_day.date(), income['income_id'])
+                                )
+                                income['last_processed_date'] = current_day.date()
+                                processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: {income['description']} requires approval (variable income)")
+                            else:
+                                # AUTO-DEPOSIT as before
+                                success, message = self.log_income(
+                                    user_id,
+                                    income['deposit_account_id'],
+                                    income['description'],
+                                    income['amount'],
+                                    transaction_date=current_day,
+                                    cursor=cursor
+                                )
+
+                                if success:
+                                    cursor.execute(
+                                        "UPDATE recurring_income SET last_processed_date = %s WHERE income_id = %s",
+                                        (current_day.date(), income['income_id'])
+                                    )
+                                    income['last_processed_date'] = current_day.date()
+                                    processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Deposited {income['description']} (${income['amount']}).")
+                                else:
+                                    processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to deposit {income['description']} - {message}")
 
             final_date = simulation_start_date + datetime.timedelta(days=days_to_advance)
             # Check if we need to insert a time marker using the existing cursor
@@ -1298,6 +1909,282 @@ class BusinessSimulator:
         except Exception as e:
             conn.rollback()
             return {'log': [f"An error occurred during time advance: {e}"]}
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =============================================================================
+    # FINANCIAL STATEMENTS
+    # =============================================================================
+
+    def get_income_statement(self, user_id, start_date, end_date):
+        """
+        Generate Income Statement (Profit & Loss) for a date range.
+
+        Returns:
+            dict: {
+                'revenue': {'total': Decimal, 'details': []},
+                'expenses': {'total': Decimal, 'by_category': []},
+                'net_income': Decimal
+            }
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get all revenue (Income account credits)
+            cursor.execute("""
+                SELECT description, SUM(credit) as amount
+                FROM financial_ledger
+                WHERE user_id = %s
+                  AND account = 'Income'
+                  AND transaction_date BETWEEN %s AND %s
+                GROUP BY description
+                ORDER BY amount DESC
+            """, (user_id, start_date, end_date))
+            revenue_details = cursor.fetchall()
+            total_revenue = sum(r['amount'] for r in revenue_details)
+
+            # Get all expenses by category (only include Expenses account or debits from CHECKING/SAVINGS/CASH/CREDIT accounts)
+            cursor.execute("""
+                SELECT
+                    COALESCE(ec.name, 'Uncategorized') as category,
+                    SUM(fl.debit) as amount
+                FROM financial_ledger fl
+                LEFT JOIN expense_categories ec ON fl.category_id = ec.category_id
+                LEFT JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
+                WHERE fl.user_id = %s
+                  AND fl.debit > 0
+                  AND fl.transaction_date BETWEEN %s AND %s
+                  AND (fl.account = 'Expenses' OR a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'CREDIT'))
+                GROUP BY ec.name
+                ORDER BY amount DESC
+            """, (user_id, start_date, end_date))
+            expense_details = cursor.fetchall()
+            total_expenses = sum(e['amount'] for e in expense_details)
+
+            return {
+                'revenue': {
+                    'total': total_revenue,
+                    'details': revenue_details
+                },
+                'expenses': {
+                    'total': total_expenses,
+                    'by_category': expense_details
+                },
+                'net_income': total_revenue - total_expenses
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_balance_sheet(self, user_id, as_of_date=None):
+        """
+        Generate Balance Sheet as of a specific date.
+
+        Returns:
+            dict: {
+                'assets': {'total': Decimal, 'accounts': []},
+                'liabilities': {'total': Decimal, 'accounts': []},
+                'equity': Decimal
+            }
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            if not as_of_date:
+                as_of_date = self._get_user_current_date(cursor, user_id)
+
+            # Get all accounts with balances as of date
+            cursor.execute("""
+                SELECT a.name, a.type, a.balance
+                FROM accounts a
+                WHERE a.user_id = %s
+                ORDER BY a.type, a.name
+            """, (user_id,))
+            accounts = cursor.fetchall()
+
+            # Calculate balances as of date by replaying transactions
+            account_balances = {}
+            for acc in accounts:
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance
+                    FROM financial_ledger
+                    WHERE user_id = %s
+                      AND account = %s
+                      AND transaction_date <= %s
+                """, (user_id, acc['name'], as_of_date))
+                result = cursor.fetchone()
+                account_balances[acc['name']] = {
+                    'type': acc['type'],
+                    'balance': result['balance'] if result else Decimal(0)
+                }
+
+            # Categorize as assets/liabilities
+            assets = []
+            liabilities = []
+
+            for name, data in account_balances.items():
+                if data['type'] in ['CHECKING', 'SAVINGS', 'INVESTMENT', 'CASH', 'FIXED_ASSET']:
+                    assets.append({'name': name, 'balance': data['balance']})
+                elif data['type'] in ['CREDIT_CARD', 'LOAN']:
+                    liabilities.append({'name': name, 'balance': abs(data['balance'])})
+
+            total_assets = sum(a['balance'] for a in assets)
+            total_liabilities = sum(l['balance'] for l in liabilities)
+
+            return {
+                'assets': {
+                    'total': total_assets,
+                    'accounts': assets
+                },
+                'liabilities': {
+                    'total': total_liabilities,
+                    'accounts': liabilities
+                },
+                'equity': total_assets - total_liabilities
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_cash_flow_statement(self, user_id, start_date, end_date):
+        """
+        Generate Cash Flow Statement for a date range.
+
+        Returns:
+            dict: {
+                'operating': Decimal,
+                'investing': Decimal,
+                'financing': Decimal,
+                'net_change': Decimal
+            }
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            # Operating Activities: Income and day-to-day Expenses only
+            cursor.execute("""
+                SELECT
+                    SUM(CASE WHEN fl.account = 'Income' THEN fl.credit ELSE 0 END) as income,
+                    SUM(CASE WHEN fl.account = 'Expenses' OR a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'CREDIT') THEN fl.debit ELSE 0 END) as expenses
+                FROM financial_ledger fl
+                LEFT JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
+                WHERE fl.user_id = %s
+                  AND fl.transaction_date BETWEEN %s AND %s
+            """, (user_id, start_date, end_date))
+            operating = cursor.fetchone()
+            operating_cash = (operating['income'] or 0) - (operating['expenses'] or 0)
+
+            # Investing Activities: Fixed asset purchases and investment account changes
+            cursor.execute("""
+                SELECT
+                    SUM(credit) - SUM(debit) as investing_flow
+                FROM financial_ledger fl
+                JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
+                WHERE fl.user_id = %s
+                  AND a.type IN ('INVESTMENT', 'FIXED_ASSET')
+                  AND fl.transaction_date BETWEEN %s AND %s
+            """, (user_id, start_date, end_date))
+            investing = cursor.fetchone()
+            investing_cash = investing['investing_flow'] or 0
+
+            # Financing Activities: Loan payments, credit card changes
+            cursor.execute("""
+                SELECT
+                    SUM(debit) - SUM(credit) as financing_flow
+                FROM financial_ledger fl
+                JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
+                WHERE fl.user_id = %s
+                  AND a.type IN ('LOAN', 'CREDIT_CARD')
+                  AND fl.transaction_date BETWEEN %s AND %s
+            """, (user_id, start_date, end_date))
+            financing = cursor.fetchone()
+            financing_cash = financing['financing_flow'] or 0
+
+            return {
+                'operating': operating_cash,
+                'investing': -investing_cash,  # Negative because investment is cash outflow
+                'financing': financing_cash,
+                'net_change': operating_cash - investing_cash + financing_cash
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_dashboard_data(self, user_id, days=30):
+        """Get dashboard summary data including stats and chart data."""
+        conn, cursor = self._get_db_connection()
+        try:
+            current_date = self._get_user_current_date(cursor, user_id)
+            start_date = current_date - datetime.timedelta(days=days)
+
+            # Get total income and expenses for the period
+            cursor.execute("""
+                SELECT
+                    SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as total_income,
+                    SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as total_expenses
+                FROM financial_ledger
+                WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
+            """, (user_id, start_date, current_date))
+            totals = cursor.fetchone()
+
+            # Get spending by category
+            cursor.execute("""
+                SELECT c.name, c.color, SUM(l.debit) as amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                GROUP BY c.category_id, c.name, c.color
+                ORDER BY amount DESC
+            """, (user_id, start_date, current_date))
+            spending_by_category = cursor.fetchall()
+
+            # Get net worth over time (daily snapshots)
+            cursor.execute("""
+                SELECT DATE(transaction_date) as date,
+                    SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as daily_change
+                FROM financial_ledger l
+                JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
+                WHERE l.user_id = %s AND transaction_date BETWEEN %s AND %s
+                GROUP BY DATE(transaction_date)
+                ORDER BY date
+            """, (user_id, start_date, current_date))
+            daily_changes = cursor.fetchall()
+
+            # Calculate starting balance at the beginning of the period
+            cursor.execute("""
+                SELECT SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as balance_before_period
+                FROM financial_ledger l
+                JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
+                WHERE l.user_id = %s AND transaction_date < %s
+            """, (user_id, start_date))
+            result = cursor.fetchone()
+            starting_balance = float(result['balance_before_period'] or 0) if result else 0.0
+
+            net_worth_trend = []
+            cumulative = starting_balance
+            for row in daily_changes:
+                cumulative += float(row['daily_change'] or 0)
+                net_worth_trend.append({
+                    'date': row['date'].strftime('%Y-%m-%d'),
+                    'net_worth': float(cumulative)
+                })
+
+            # Calculate savings rate
+            total_income = float(totals['total_income'] or 0)
+            total_expenses = float(totals['total_expenses'] or 0)
+            savings_rate = ((total_income - total_expenses) / total_income * 100) if total_income > 0 else 0
+
+            return {
+                'total_income': total_income,
+                'total_expenses': total_expenses,
+                'net_income': total_income - total_expenses,
+                'savings_rate': round(savings_rate, 1),
+                'spending_by_category': spending_by_category,
+                'net_worth_trend': net_worth_trend,
+                'period_days': days
+            }
         finally:
             cursor.close()
             conn.close()

@@ -1,14 +1,20 @@
-Python cache files and virtual environments
 __pycache__/
 *.pyc
-venv/
-*.env
-
-System files
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+.env.local
+.env.development
+*.log
 .DS_Store
-
-IDE configuration files
-.vscode/
-.idea/
-
-.env
+node_modules/
+electron/
+venv/
+env/
+dashboard_error.log

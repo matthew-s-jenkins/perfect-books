@@ -20,12 +20,61 @@
             return fetch(url, { ...options, credentials: 'include' });
         };
 
+        // Helper function to format money input with dollar sign and commas
+        const formatMoneyInput = (value) => {
+            // Remove all non-digit and non-decimal characters
+            let numericValue = value.replace(/[^0-9.]/g, '');
+
+            // Ensure only one decimal point
+            const parts = numericValue.split('.');
+            if (parts.length > 2) {
+                numericValue = parts[0] + '.' + parts.slice(1).join('');
+            }
+
+            // Limit to 2 decimal places
+            if (parts.length === 2 && parts[1].length > 2) {
+                numericValue = parts[0] + '.' + parts[1].substring(0, 2);
+            }
+
+            // Parse the numeric value
+            const num = parseFloat(numericValue);
+
+            // If empty or invalid, return empty string
+            if (isNaN(num) || numericValue === '') {
+                return '';
+            }
+
+            // Split into integer and decimal parts
+            const [integerPart, decimalPart] = numericValue.split('.');
+
+            // Add commas to integer part
+            const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+            // Reconstruct with dollar sign
+            let formatted = '$' + formattedInteger;
+
+            // Add decimal part if it exists
+            if (decimalPart !== undefined) {
+                formatted += '.' + decimalPart;
+            }
+
+            return formatted;
+        };
+
+        // Helper function to extract raw numeric value from formatted string
+        const extractNumericValue = (formattedValue) => {
+            const numeric = formattedValue.replace(/[^0-9.]/g, '');
+            return numeric === '' ? '' : numeric;
+        };
+
         function SetupWizard() {
             // Form state for adding new accounts
             const [newName, setNewName] = useState('');
             const [newType, setNewType] = useState('CHECKING');
             const [newBalance, setNewBalance] = useState('');
+            const [newBalanceDisplay, setNewBalanceDisplay] = useState('');
             const [newCreditLimit, setNewCreditLimit] = useState('');
+            const [newCreditLimitDisplay, setNewCreditLimitDisplay] = useState('');
             
             // Main state
             const [accounts, setAccounts] = useState([]);
@@ -40,6 +89,22 @@
             // Loading state
             const [isLoading, setIsLoading] = useState(true);
             const [connectionError, setConnectionError] = useState('');
+
+            // Handler for balance input formatting
+            const handleBalanceChange = (e) => {
+                const formatted = formatMoneyInput(e.target.value);
+                const numeric = extractNumericValue(formatted);
+                setNewBalanceDisplay(formatted);
+                setNewBalance(numeric);
+            };
+
+            // Handler for credit limit input formatting
+            const handleCreditLimitChange = (e) => {
+                const formatted = formatMoneyInput(e.target.value);
+                const numeric = extractNumericValue(formatted);
+                setNewCreditLimitDisplay(formatted);
+                setNewCreditLimit(numeric);
+            };
 
             const fetchAccounts = async () => {
                 try {
@@ -69,10 +134,15 @@
                     setFormError('Account Name and Balance are required.');
                     return;
                 }
+
+                // Convert balance to negative for credit cards and loans (they represent debt)
+                const balanceValue = parseFloat(newBalance);
+                const finalBalance = (newType === 'CREDIT_CARD' || newType === 'LOAN') ? -Math.abs(balanceValue) : balanceValue;
+
                 const newAccount = {
                     name: newName,
                     type: newType,
-                    balance: parseFloat(newBalance),
+                    balance: finalBalance,
                     credit_limit: newType === 'CREDIT_CARD' ? parseFloat(newCreditLimit) : null,
                 };
                  setAccounts([...accounts, newAccount]);
@@ -80,7 +150,9 @@
                 setNewName('');
                 setNewType('CHECKING');
                 setNewBalance('');
+                setNewBalanceDisplay('');
                 setNewCreditLimit('');
+                setNewCreditLimitDisplay('');
             };
             
             // --- NEW: For existing users to add one account ---
@@ -91,11 +163,15 @@
                     setFormError('Account Name and Initial Balance are required.');
                     return;
                 }
-                
+
+                // Convert balance to negative for credit cards and loans (they represent debt)
+                const balanceValue = parseFloat(newBalance);
+                const finalBalance = (newType === 'CREDIT_CARD' || newType === 'LOAN') ? -Math.abs(balanceValue) : balanceValue;
+
                 const newAccountData = {
                     name: newName,
                     type: newType,
-                    balance: parseFloat(newBalance),
+                    balance: finalBalance,
                     credit_limit: newType === 'CREDIT_CARD' ? parseFloat(newCreditLimit) : null,
                 };
 
@@ -111,7 +187,9 @@
                         setNewName('');
                         setNewType('CHECKING');
                         setNewBalance('');
+                        setNewBalanceDisplay('');
                         setNewCreditLimit('');
+                        setNewCreditLimitDisplay('');
                         fetchAccounts();
                     } else {
                         const result = await response.json();
@@ -256,14 +334,28 @@
                                         <option value="FIXED_ASSET">Fixed Asset</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="block text-gray-400 mb-1 text-sm">Initial Balance ($)</label>
-                                    <input type="number" step="0.01" value={newBalance} onChange={(e) => setNewBalance(e.target.value)} className="w-full bg-gray-600 text-white p-2 rounded" placeholder="0.00"/>
+                                <div className="flex flex-col">
+                                    <label className="block text-gray-400 mb-1 text-sm">
+                                        {(newType === 'CREDIT_CARD' || newType === 'LOAN') ? 'Amount Owed' : 'Initial Balance'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newBalanceDisplay}
+                                        onInput={handleBalanceChange}
+                                        className="w-full bg-gray-600 text-white p-2 rounded font-mono"
+                                        placeholder={(newType === 'CREDIT_CARD' || newType === 'LOAN') ? '$1,000.00' : '$0.00'}
+                                    />
+                                    <div className="h-6 mt-1">
+                                        {(newType === 'CREDIT_CARD' || newType === 'LOAN') && (
+                                            <p className="text-xs text-gray-500">Enter as positive (e.g., $1,000.00 for $1,000 owed)</p>
+                                        )}
+                                    </div>
                                 </div>
                                 {newType === 'CREDIT_CARD' && (
-                                    <div>
-                                        <label className="block text-gray-400 mb-1 text-sm">Credit Limit ($)</label>
-                                        <input type="number" step="0.01" value={newCreditLimit} onChange={(e) => setNewCreditLimit(e.target.value)} className="w-full bg-gray-600 text-white p-2 rounded" placeholder="5000.00"/>
+                                    <div className="flex flex-col">
+                                        <label className="block text-gray-400 mb-1 text-sm">Credit Limit</label>
+                                        <input type="text" value={newCreditLimitDisplay} onInput={handleCreditLimitChange} className="w-full bg-gray-600 text-white p-2 rounded font-mono" placeholder="$5,000.00"/>
+                                        <div className="h-6 mt-1"></div>
                                     </div>
                                 )}
                                 <div className="md:col-span-2">

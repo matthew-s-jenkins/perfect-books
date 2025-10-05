@@ -269,8 +269,15 @@ def manage_account_api(account_id):
 @check_sim
 @login_required
 def get_recurring_expenses_api():
-    expenses = sim.get_recurring_expenses(user_id=current_user.id)
-    return jsonify(expenses)
+    try:
+        expenses = sim.get_recurring_expenses(user_id=current_user.id)
+        print(f"DEBUG: Found {len(expenses)} recurring expenses for user {current_user.id}")
+        return jsonify(expenses)
+    except Exception as e:
+        print(f"ERROR in get_recurring_expenses_api: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify([])
 
 @app.route('/api/recurring_expenses', methods=['POST'])
 @check_sim
@@ -309,9 +316,11 @@ def manage_recurring_expense_api(expense_id):
         amount = data.get('amount')
         due_day_of_month = data.get('due_day_of_month')
         category_id = data.get('category_id')  # Optional category
+        is_variable = data.get('is_variable', False)
+        estimated_amount = data.get('estimated_amount')
 
-        if not all([description, amount, due_day_of_month]):
-            return jsonify({"success": False, "message": "Description, amount, and due day are required."}), 400
+        if not all([description, due_day_of_month]):
+            return jsonify({"success": False, "message": "Description and due day are required."}), 400
 
         success, message = sim.update_recurring_expense(
             user_id=current_user.id,
@@ -319,7 +328,9 @@ def manage_recurring_expense_api(expense_id):
             description=description,
             amount=amount,
             due_day_of_month=due_day_of_month,
-            category_id=category_id
+            category_id=category_id,
+            is_variable=is_variable,
+            estimated_amount=estimated_amount
         )
         if success:
             return jsonify({"success": True, "message": message})
@@ -338,6 +349,90 @@ def manage_recurring_expense_api(expense_id):
             status_code = 404 if "not found" in message else 500
             return jsonify({"success": False, "message": message}), status_code
 
+# --- RECURRING INCOME API ROUTES ---
+
+@app.route('/api/recurring_income', methods=['GET'])
+@check_sim
+@login_required
+def get_recurring_income_api():
+    try:
+        income = sim.get_recurring_income(user_id=current_user.id)
+        return jsonify(income)
+    except Exception as e:
+        return jsonify([])
+
+@app.route('/api/recurring_income', methods=['POST'])
+@check_sim
+@login_required
+def add_recurring_income_api():
+    data = request.get_json()
+    description = data.get('description')
+    amount = data.get('amount')
+    deposit_account_id = data.get('deposit_account_id')
+    deposit_day_of_month = data.get('deposit_day_of_month')
+    is_variable = data.get('is_variable', False)
+    estimated_amount = data.get('estimated_amount')
+
+    if not all([description, deposit_account_id, deposit_day_of_month]):
+        return jsonify({"success": False, "message": "Description, account, and deposit day are required."}), 400
+
+    success, message = sim.add_recurring_income(
+        user_id=current_user.id,
+        description=description,
+        amount=amount,
+        deposit_account_id=deposit_account_id,
+        deposit_day_of_month=deposit_day_of_month,
+        is_variable=is_variable,
+        estimated_amount=estimated_amount
+    )
+
+    if success:
+        return jsonify({"success": True, "message": message})
+    else:
+        return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/recurring_income/<int:income_id>', methods=['PUT', 'DELETE'])
+@check_sim
+@login_required
+def manage_recurring_income_api(income_id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        print(f"PUT /api/recurring_income/{income_id} received data:", data)
+        description = data.get('description')
+        amount = data.get('amount')
+        deposit_day_of_month = data.get('deposit_day_of_month')
+        is_variable = data.get('is_variable', False)
+        estimated_amount = data.get('estimated_amount')
+
+        if not all([description, deposit_day_of_month]):
+            return jsonify({"success": False, "message": "Description and deposit day are required."}), 400
+
+        success, message = sim.update_recurring_income(
+            user_id=current_user.id,
+            income_id=income_id,
+            description=description,
+            amount=amount,
+            deposit_day_of_month=deposit_day_of_month,
+            is_variable=is_variable,
+            estimated_amount=estimated_amount
+        )
+        print(f"update_recurring_income returned: success={success}, message={message}")
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            status_code = 404 if "not found" in message else 500
+            return jsonify({"success": False, "message": message}), status_code
+
+    elif request.method == 'DELETE':
+        success, message = sim.delete_recurring_income(
+            user_id=current_user.id,
+            income_id=income_id
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            status_code = 404 if "not found" in message else 500
+            return jsonify({"success": False, "message": message}), status_code
 
 # --- OTHER DATA ROUTES ---
 
@@ -485,7 +580,7 @@ def update_expense_category_api():
     if not transaction_uuid:
         return jsonify({"success": False, "message": "transaction_uuid is required."}), 400
 
-    success, message = sim.update_expense_category(
+    success, message = sim.update_transaction_category(
         user_id=current_user.id,
         transaction_uuid=transaction_uuid,
         category_id=category_id
@@ -497,9 +592,17 @@ def update_expense_category_api():
 @check_sim
 @login_required
 def advance_time():
-    days = request.get_json().get('days', 1)
-    result = sim.advance_time(user_id=current_user.id, days_to_advance=days)
-    return jsonify({"success": True, "message": f"Time advanced by {days} days.", "result": result})
+    try:
+        days = request.get_json().get('days', 1)
+        print(f"[ADVANCE_TIME] Starting time advance for {days} day(s)")
+        result = sim.advance_time(user_id=current_user.id, days_to_advance=days)
+        print(f"[ADVANCE_TIME] Result: {result}")
+        return jsonify({"success": True, "message": f"Time advanced by {days} days.", "result": result})
+    except Exception as e:
+        print(f"[ADVANCE_TIME ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"Error advancing time: {str(e)}"}), 500
 
 @app.route('/api/income', methods=['POST'])
 @check_sim
@@ -597,6 +700,182 @@ def transfer_between_accounts_api():
         transaction_date=transaction_date
     )
     return jsonify({"success": success, "message": message}), 200 if success else 400
+
+# =============================================================================
+# PENDING TRANSACTIONS API (Variable Expenses & Interest Approval)
+# =============================================================================
+
+@app.route('/api/pending_transactions', methods=['GET'])
+@check_sim
+@login_required
+def get_pending_transactions_api():
+    """Get all pending transaction approvals."""
+    try:
+        pending = sim.get_pending_transactions(user_id=current_user.id)
+        return jsonify(pending)
+    except Exception as e:
+        # If pending_transactions table doesn't exist, return empty list
+        return jsonify([])
+
+@app.route('/api/pending_transactions/<int:pending_id>/approve', methods=['POST'])
+@check_sim
+@login_required
+def approve_pending_transaction_api(pending_id):
+    """Approve a pending transaction with actual amount."""
+    data = request.get_json()
+    actual_amount = data.get('actual_amount')
+
+    if not actual_amount:
+        return jsonify({"success": False, "message": "Actual amount is required."}), 400
+
+    success, message = sim.approve_pending_transaction(
+        user_id=current_user.id,
+        pending_id=pending_id,
+        actual_amount=actual_amount
+    )
+
+    if success:
+        return jsonify({"success": True, "message": message})
+    else:
+        return jsonify({"success": False, "message": message}), 500
+
+@app.route('/api/pending_transactions/<int:pending_id>/reject', methods=['POST'])
+@check_sim
+@login_required
+def reject_pending_transaction_api(pending_id):
+    """Reject/dismiss a pending transaction."""
+    success, message = sim.reject_pending_transaction(
+        user_id=current_user.id,
+        pending_id=pending_id
+    )
+    return jsonify({"success": success, "message": message})
+
+# =============================================================================
+# LOAN PAYMENT API
+# =============================================================================
+
+@app.route('/api/loans/<int:loan_id>/payment', methods=['POST'])
+@check_sim
+@login_required
+def make_loan_payment_api(loan_id):
+    """Make a loan payment with principal/interest split and optional escrow."""
+    data = request.get_json()
+    payment_amount = data.get('payment_amount')
+    payment_account_id = data.get('payment_account_id')
+    payment_date = data.get('payment_date')
+    escrow_amount = data.get('escrow_amount')
+
+    if not all([payment_amount, payment_account_id]):
+        return jsonify({"success": False, "message": "Missing required fields: payment_amount and payment_account_id."}), 400
+
+    success, message = sim.make_loan_payment(
+        user_id=current_user.id,
+        loan_id=loan_id,
+        payment_amount=payment_amount,
+        payment_account_id=payment_account_id,
+        payment_date=payment_date,
+        escrow_amount=escrow_amount
+    )
+
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/loans/<int:loan_id>/payment_history', methods=['GET'])
+@check_sim
+@login_required
+def get_loan_payment_history_api(loan_id):
+    """Get payment history for a loan."""
+    history = sim.get_loan_payment_history(user_id=current_user.id, loan_id=loan_id)
+    return jsonify(history)
+
+# =============================================================================
+# CREDIT CARD INTEREST API
+# =============================================================================
+
+@app.route('/api/accounts/<int:account_id>/calculate_interest', methods=['POST'])
+@check_sim
+@login_required
+def calculate_credit_card_interest_api(account_id):
+    """Calculate and create pending transaction for credit card interest."""
+    try:
+        success, message = sim.calculate_credit_card_interest(
+            user_id=current_user.id,
+            card_account_id=account_id
+        )
+        print(f"DEBUG calculate_interest: success={success}, message={message}")
+        return jsonify({"success": success, "message": message}), 200 if success else 400
+    except Exception as e:
+        print(f"ERROR in calculate_interest_api: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)}), 400
+
+# =============================================================================
+# FINANCIAL STATEMENTS API
+# =============================================================================
+
+@app.route('/api/reports/income_statement', methods=['GET'])
+@check_sim
+@login_required
+def get_income_statement_api():
+    """Get Income Statement (P&L) for a date range."""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    if not start_date or not end_date:
+        return jsonify({"success": False, "message": "start_date and end_date are required"}), 400
+
+    data = sim.get_income_statement(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    return jsonify(data)
+
+@app.route('/api/reports/balance_sheet', methods=['GET'])
+@check_sim
+@login_required
+def get_balance_sheet_api():
+    """Get Balance Sheet as of a specific date."""
+    as_of_date = request.args.get('as_of_date')  # Optional, defaults to current date
+
+    data = sim.get_balance_sheet(
+        user_id=current_user.id,
+        as_of_date=as_of_date
+    )
+    return jsonify(data)
+
+@app.route('/api/reports/cash_flow', methods=['GET'])
+@check_sim
+@login_required
+def get_cash_flow_api():
+    """Get Cash Flow Statement for a date range."""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    if not start_date or not end_date:
+        return jsonify({"success": False, "message": "start_date and end_date are required"}), 400
+
+    data = sim.get_cash_flow_statement(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    return jsonify(data)
+
+@app.route('/api/dashboard', methods=['GET'])
+@check_sim
+@login_required
+def get_dashboard_data():
+    try:
+        days = int(request.args.get('days', 30))
+        data = sim.get_dashboard_data(user_id=current_user.id, days=days)
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        with open('dashboard_error.log', 'w') as f:
+            f.write(error_msg)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 # --- RUN THE APP ---
 if __name__ == '__main__':
