@@ -33,16 +33,17 @@ import time
 from decimal import Decimal
 import bcrypt
 
-# Load environment variables from .env file
+# Load environment variables from .env file (for local development)
+# Railway and other hosting platforms will provide these as environment variables
 load_dotenv()
 
 # --- DATABASE CONFIGURATION ---
-# These values are loaded from the .env file for security
+# These values are loaded from environment variables
 DB_CONFIG = {
     'user': os.getenv('DB_USER'),
     'password': os.getenv('DB_PASSWORD'),
     'host': os.getenv('DB_HOST'),
-    'port': os.getenv('DB_PORT'),
+    'port': int(os.getenv('DB_PORT', 3306)),  # Convert to int with default
     'database': os.getenv('DB_NAME')
 }
 
