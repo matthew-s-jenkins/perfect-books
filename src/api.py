@@ -32,7 +32,7 @@ Related Project: Digital Harvest (Uses similar Flask API architecture)
 
 from flask import Flask, jsonify, request, send_from_directory, redirect, url_for, session
 from flask_cors import CORS
-from engine import BusinessSimulator
+from src.engine import BusinessSimulator
 import json
 from decimal import Decimal
 import datetime
