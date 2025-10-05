@@ -47,6 +47,16 @@ DB_CONFIG = {
     'database': os.getenv('DB_NAME')
 }
 
+# Debug: Print config on startup (hide password)
+print("=" * 60)
+print("DATABASE CONFIGURATION:")
+print(f"  Host: {DB_CONFIG['host']}")
+print(f"  Port: {DB_CONFIG['port']}")
+print(f"  User: {DB_CONFIG['user']}")
+print(f"  Database: {DB_CONFIG['database']}")
+print(f"  Password: {'***' if DB_CONFIG['password'] else 'NOT SET'}")
+print("=" * 60)
+
 
 class BusinessSimulator:
     """
