@@ -33,9 +33,10 @@ import time
 from decimal import Decimal
 import bcrypt
 
-# Load environment variables from .env file (for local development)
-# Railway and other hosting platforms will provide these as environment variables
-load_dotenv()
+# Load environment variables from .env file (for local development only)
+# Railway sets environment variables directly, so only load .env if it exists locally
+if os.path.exists('.env'):
+    load_dotenv()
 
 # --- DATABASE CONFIGURATION ---
 # These values are loaded from environment variables
