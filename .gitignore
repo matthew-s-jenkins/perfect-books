@@ -18,3 +18,4 @@ electron/
 venv/
 env/
 dashboard_error.log
+.env
