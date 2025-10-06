@@ -119,8 +119,11 @@ class BusinessSimulator:
         )
         result = cursor.fetchone()
         if result and result['last_date']:
+            # Ensure we return a date object (not datetime)
+            if isinstance(result['last_date'], datetime.datetime):
+                return result['last_date'].date()
             return result['last_date']
-        return datetime.datetime.now()
+        return datetime.datetime.now().date()
 
     # =============================================================================
     # USER AUTHENTICATION METHODS
