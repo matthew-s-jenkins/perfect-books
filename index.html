@@ -2135,7 +2135,7 @@
                                 <label className="block text-gray-400 mb-2">Pay From Account</label>
                                 <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
                                     <option value="">-- Select an Account --</option>
-                                    {accounts.filter(acc => acc.type !== 'CASH').map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                    {accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CREDIT_CARD'].includes(acc.type)).map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
                                 </select>
                             </div>
                             <div className="mb-4">
