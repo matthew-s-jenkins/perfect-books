@@ -1042,6 +1042,22 @@ def migrate_database():
         if cursor.fetchone()[0] == 0:
             cursor.execute("""
                 ALTER TABLE recurring_expenses
+                ADD COLUMN description VARCHAR(255) NULL,
+                ADD COLUMN payment_account_id INT NULL
+            """)
+
+        # Add description to recurring_income if missing
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'recurring_income'
+            AND COLUMN_NAME = 'description'
+        """)
+
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE recurring_income
                 ADD COLUMN description VARCHAR(255) NULL
             """)
 
