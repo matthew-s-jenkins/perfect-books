@@ -1163,14 +1163,22 @@ class BusinessSimulator:
             if not 1 <= deposit_day_of_month <= 31:
                 return False, "Deposit day must be between 1 and 31."
 
+            # Debug: Check if the record exists first
+            cursor.execute("SELECT income_id, user_id FROM recurring_income WHERE income_id = %s", (income_id,))
+            existing = cursor.fetchone()
+            print(f"DEBUG update_recurring_income: Looking for income_id={income_id}, user_id={user_id}")
+            print(f"DEBUG update_recurring_income: Found record: {existing}")
+
             cursor.execute(
                 "UPDATE recurring_income SET description = %s, amount = %s, deposit_day_of_month = %s, is_variable = %s, estimated_amount = %s "
                 "WHERE income_id = %s AND user_id = %s",
                 (description, amount, deposit_day_of_month, is_variable, estimated_amount, income_id, user_id)
             )
 
+            print(f"DEBUG update_recurring_income: UPDATE affected {cursor.rowcount} rows")
+
             if cursor.rowcount == 0:
-                return False, "Income not found or you do not have permission to update it."
+                return False, f"Income not found or you do not have permission to update it. (income_id={income_id}, user_id={user_id})"
 
             conn.commit()
             return True, "Recurring income updated successfully."
