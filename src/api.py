@@ -888,6 +888,38 @@ def get_dashboard_data():
             f.write(error_msg)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
+# =============================================================================
+# DATABASE INITIALIZATION (Railway only)
+# =============================================================================
+
+@app.route('/api/init_db', methods=['POST'])
+def init_database():
+    """Initialize Railway database tables. Run this once after deployment."""
+    try:
+        import mysql.connector
+        from railway_config import RAILWAY_DB_CONFIG
+
+        # Read the SQL file
+        with open('railway_setup.sql', 'r') as f:
+            sql_script = f.read()
+
+        # Connect and execute
+        conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
+        cursor = conn.cursor()
+
+        # Execute each statement separately
+        for statement in sql_script.split(';'):
+            if statement.strip():
+                cursor.execute(statement)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "message": "Database initialized successfully!"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # --- RUN THE APP ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000, use_reloader=False)
