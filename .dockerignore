@@ -1,0 +1,16 @@
+# Force rebuild by changing this file
+# Last update: 2025-10-06 02:19
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.git/
+.vscode/
+*.log
