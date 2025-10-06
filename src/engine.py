@@ -587,6 +587,10 @@ class BusinessSimulator:
     def get_daily_net(self, user_id, for_date):
         conn, cursor = self._get_db_connection()
         try:
+            # Ensure for_date is a date object (handle both date and datetime)
+            if isinstance(for_date, datetime.datetime):
+                for_date = for_date.date()
+
             query = """
                 SELECT
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
@@ -594,7 +598,7 @@ class BusinessSimulator:
                 FROM financial_ledger
                 WHERE user_id = %s AND DATE(transaction_date) = %s
             """
-            cursor.execute(query, (user_id, for_date.date()))
+            cursor.execute(query, (user_id, for_date))
             result = cursor.fetchone()
             total_income = result['total_income'] or Decimal('0.00')
             total_expenses = result['total_expenses'] or Decimal('0.00')
@@ -623,7 +627,8 @@ class BusinessSimulator:
                 return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
 
             first_date = first_date_result['first_date']
-            days_since_start = (current_date.date() - first_date).days + 1
+            # current_date is already a date object, no need to call .date()
+            days_since_start = (current_date - first_date).days + 1
 
             # For the first 30 days, use all available data at 100% weight
             if days_since_start <= 30:
@@ -677,7 +682,8 @@ class BusinessSimulator:
                         AND description != 'Initial Balance'
                     GROUP BY DATE(transaction_date)
                 """
-                cursor.execute(query, (user_id, start_date.date(), current_date.date()))
+                # start_date and current_date are already date objects
+                cursor.execute(query, (user_id, start_date, current_date))
                 results = cursor.fetchall()
 
                 if not results:
