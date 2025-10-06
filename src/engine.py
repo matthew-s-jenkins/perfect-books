@@ -34,19 +34,27 @@ from decimal import Decimal
 import bcrypt
 
 # Load environment variables from .env file (for local development only)
-# Railway sets environment variables directly, so only load .env if it exists locally
 if os.path.exists('.env'):
     load_dotenv()
 
 # --- DATABASE CONFIGURATION ---
-# These values are loaded from environment variables
+# Try environment variables first, fall back to railway_config.py if they're not set
 DB_CONFIG = {
     'user': os.getenv('DB_USER'),
     'password': os.getenv('DB_PASSWORD'),
     'host': os.getenv('DB_HOST'),
-    'port': int(os.getenv('DB_PORT', 3306)),  # Convert to int with default
+    'port': int(os.getenv('DB_PORT', 3306)) if os.getenv('DB_PORT') else 3306,
     'database': os.getenv('DB_NAME')
 }
+
+# If environment variables aren't set, try loading Railway-specific config
+if not DB_CONFIG['host']:
+    try:
+        from railway_config import RAILWAY_DB_CONFIG
+        DB_CONFIG = RAILWAY_DB_CONFIG
+        print("Using railway_config.py (environment variables not available)")
+    except ImportError:
+        print("WARNING: No database configuration found!")
 
 # Debug: Print config on startup (hide password)
 print("=" * 60)
