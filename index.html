@@ -1640,19 +1640,23 @@
 
             const handleUpdateIncome = async (incomeId) => {
                 try {
+                    console.log('Updating income with ID:', incomeId);
+                    const payload = {
+                        description: editingDescription,
+                        amount: editingIsVariable ? (editingEstimatedAmount ? parseFloat(editingEstimatedAmount.toString().replace(/,/g, '')) : 0) : parseFloat(editingAmount.toString().replace(/,/g, '')),
+                        deposit_day_of_month: parseInt(editingDepositDay),
+                        is_variable: editingIsVariable,
+                        estimated_amount: editingIsVariable && editingEstimatedAmount ? parseFloat(editingEstimatedAmount.toString().replace(/,/g, '')) : null
+                    };
+                    console.log('Payload:', payload);
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_income/${incomeId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            description: editingDescription,
-                            amount: editingIsVariable ? (editingEstimatedAmount ? parseFloat(editingEstimatedAmount.toString().replace(/,/g, '')) : 0) : parseFloat(editingAmount.toString().replace(/,/g, '')),
-                            deposit_day_of_month: parseInt(editingDepositDay),
-                            is_variable: editingIsVariable,
-                            estimated_amount: editingIsVariable && editingEstimatedAmount ? parseFloat(editingEstimatedAmount.toString().replace(/,/g, '')) : null
-                        })
+                        body: JSON.stringify(payload)
                     });
 
                     const result = await response.json();
+                    console.log('Response:', result);
 
                     if (response.ok) {
                         const incomeRes = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_income`);
@@ -1663,10 +1667,12 @@
                         handleCancelEdit();
                         onDataChange();
                     } else {
+                        console.error('Update failed:', result);
                         setError(result.message || 'Failed to update income.');
                     }
                 } catch(err) {
-                    setError('An error occurred during update. Please try again.');
+                    console.error('Error updating income:', err);
+                    setError('An error occurred during update: ' + err.message);
                 }
             };
 
