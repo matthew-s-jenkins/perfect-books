@@ -932,12 +932,22 @@ def migrate_database():
         conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
         cursor = conn.cursor()
 
-        # Add transaction_date column if it doesn't exist
+        # Check if transaction_date column exists
         cursor.execute("""
-            ALTER TABLE financial_ledger
-            ADD COLUMN IF NOT EXISTS transaction_date DATE NULL
-            AFTER timestamp
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'financial_ledger'
+            AND COLUMN_NAME = 'transaction_date'
         """)
+
+        if cursor.fetchone()[0] == 0:
+            # Add transaction_date column if it doesn't exist
+            cursor.execute("""
+                ALTER TABLE financial_ledger
+                ADD COLUMN transaction_date DATE NULL
+                AFTER timestamp
+            """)
 
         conn.commit()
         cursor.close()
