@@ -986,7 +986,11 @@ def migrate_database():
         if cursor.fetchone()[0] == 0:
             cursor.execute("""
                 ALTER TABLE financial_ledger
-                ADD COLUMN entry_id INT AS (ledger_id) VIRTUAL
+                ADD COLUMN entry_id INT NULL
+            """)
+            # Copy ledger_id values to entry_id
+            cursor.execute("""
+                UPDATE financial_ledger SET entry_id = ledger_id
             """)
 
         # Add frequency column to recurring_expenses (legacy code uses ENUM instead of frequency_days)
