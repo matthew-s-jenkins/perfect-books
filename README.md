@@ -140,34 +140,34 @@ Before running Perfect Books, ensure you have:
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/perfect-books.git
-   cd perfect-books
-   ```
+ ```bash
+ git clone https://github.com/yourusername/perfect-books.git
+ cd perfect-books
+ ```
 
 2. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
 3. **Configure environment variables**
 
    Create a `.env` file in the project root:
-   ```env
-   DB_HOST=localhost
-   DB_PORT=3306
-   DB_USER=your_mysql_username
-   DB_PASSWORD=your_mysql_password
-   DB_NAME=perfect_books
-   ```
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=your_mysql_username
+DB_PASSWORD=your_mysql_password
+DB_NAME=perfect_books
+```
 
 4. **Initialize the database**
 
    ⚠️ **Warning**: This will drop and recreate the `perfect_books` database!
 
-   ```bash
-   python src/setup.py
-   ```
+```bash
+python src/setup.py
+```
 
    You should see output confirming table creation.
 
@@ -176,17 +176,17 @@ Before running Perfect Books, ensure you have:
 #### Web Interface (Recommended)
 
 1. **Start the API server**
-   ```bash
-   python src/api.py
-   ```
+```bash
+python src/api.py
+```
    You should see: `* Running on http://127.0.0.1:5000`
 
 2. **Open the interface**
    - **Simple**: Double-click `index.html` to open directly in your browser
   - **Server** (for better compatibility):
-     ```bash
-     python -m http.server 8080
-     ```
+```bash
+python -m http.server 8080
+```
      Then navigate to: `http://localhost:8080/index.html`
 
 3. **Register/Login**
