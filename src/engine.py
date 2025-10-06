@@ -1821,7 +1821,7 @@ class BusinessSimulator:
                                     expense['expense_id'],
                                     expense['description'],
                                     expense.get('estimated_amount') or expense['amount'],
-                                    current_day.date(),
+                                    current_day,
                                     expense['payment_account_id'],
                                     expense.get('category_id')
                                 ))
@@ -1829,9 +1829,9 @@ class BusinessSimulator:
                                 # Update last_processed_date so it doesn't create duplicate pending transactions
                                 cursor.execute(
                                     "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
-                                    (current_day.date(), expense['expense_id'])
+                                    (current_day, expense['expense_id'])
                                 )
-                                expense['last_processed_date'] = current_day.date()
+                                expense['last_processed_date'] = current_day
                                 processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: {expense['description']} requires approval (variable expense)")
                             else:
                                 # AUTO-PAY as before (existing code)
@@ -1848,10 +1848,10 @@ class BusinessSimulator:
                                 if success:
                                     cursor.execute(
                                         "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
-                                        (current_day.date(), expense['expense_id'])
+                                        (current_day, expense['expense_id'])
                                     )
                                     # Update the in-memory record to prevent re-payment in the same run
-                                    expense['last_processed_date'] = current_day.date()
+                                    expense['last_processed_date'] = current_day
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Paid {expense['description']} (${expense['amount']}).")
                                 else:
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to pay {expense['description']} - {message}")
@@ -1884,16 +1884,16 @@ class BusinessSimulator:
                                     income['income_id'],
                                     income['description'],
                                     income.get('estimated_amount') or income['amount'],
-                                    current_day.date(),
+                                    current_day,
                                     income['deposit_account_id']
                                 ))
 
                                 # Update last_processed_date so it doesn't create duplicate pending transactions
                                 cursor.execute(
                                     "UPDATE recurring_income SET last_processed_date = %s WHERE income_id = %s",
-                                    (current_day.date(), income['income_id'])
+                                    (current_day, income['income_id'])
                                 )
-                                income['last_processed_date'] = current_day.date()
+                                income['last_processed_date'] = current_day
                                 processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: {income['description']} requires approval (variable income)")
                             else:
                                 # AUTO-DEPOSIT as before
@@ -1909,9 +1909,9 @@ class BusinessSimulator:
                                 if success:
                                     cursor.execute(
                                         "UPDATE recurring_income SET last_processed_date = %s WHERE income_id = %s",
-                                        (current_day.date(), income['income_id'])
+                                        (current_day, income['income_id'])
                                     )
-                                    income['last_processed_date'] = current_day.date()
+                                    income['last_processed_date'] = current_day
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Deposited {income['description']} (${income['amount']}).")
                                 else:
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to deposit {income['description']} - {message}")
