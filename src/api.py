@@ -32,12 +32,23 @@ Related Project: Digital Harvest (Uses similar Flask API architecture)
 
 from flask import Flask, jsonify, request, send_from_directory, redirect, url_for, session
 from flask_cors import CORS
-from src.engine import BusinessSimulator
 import json
 from decimal import Decimal
 import datetime
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import os
+
+# Debug: Print environment variables BEFORE importing engine
+print("=" * 60)
+print("ENVIRONMENT VARIABLES IN API.PY:")
+print(f"  DB_HOST: {os.getenv('DB_HOST')}")
+print(f"  DB_PORT: {os.getenv('DB_PORT')}")
+print(f"  DB_USER: {os.getenv('DB_USER')}")
+print(f"  DB_NAME: {os.getenv('DB_NAME')}")
+print(f"  DB_PASSWORD: {'***' if os.getenv('DB_PASSWORD') else 'NOT SET'}")
+print("=" * 60)
+
+from src.engine import BusinessSimulator
 
 
 class CustomEncoder(json.JSONEncoder):
