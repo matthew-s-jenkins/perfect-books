@@ -1748,8 +1748,9 @@
                         </label>
                     </div>
 
-                    <table className="w-full text-left">
-                        <thead className="border-b border-gray-700">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="border-b border-gray-700">
                             <tr>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase">Description</th>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Amount</th>
@@ -1830,7 +1831,8 @@
                                 </React.Fragment>
                             ))}
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
             );
         }
@@ -1902,8 +1904,7 @@
                 }
             };
 
-            const handleAddNewExpense = async (e) => {
-                e.preventDefault();
+            const handleAddNewExpense = async () => {
                 setError('');
                 if (!newDescription || !newPaymentAccountId || !newDueDay) {
                     setError('Description, payment account, and due day are required.');
@@ -2007,12 +2008,46 @@
             };
 
             return (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-                    <div className="md:col-span-2 bg-gray-800 shadow rounded-lg p-4">
-                        <h2 className="text-xl font-bold text-white mb-4">Manage Recurring Expenses</h2>
-                        {isLoading ? <p>Loading...</p> :
+                <div className="bg-gray-800 shadow rounded-lg p-4 mt-6">
+                    <h2 className="text-xl font-bold text-white mb-4">Recurring Expenses</h2>
+                    {error && <div className="bg-red-600 text-white p-2 rounded mb-4">{error}</div>}
+
+                    <div className="bg-gray-700 p-4 rounded-lg mb-4">
+                        <h3 className="text-white font-medium mb-3">Add Recurring Expense</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                            <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Description (e.g. Netflix)" />
+                            {!newIsVariable && (
+                                <input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="15.99"/>
+                            )}
+                            {newIsVariable && (
+                                <input type="number" step="0.01" value={newEstimatedAmount} onChange={(e) => setNewEstimatedAmount(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Est. amount"/>
+                            )}
+                            <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Due Day" />
+                            <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
+                                <option value="">Select Account</option>
+                                {accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CREDIT_CARD'].includes(acc.type)).map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                            </select>
+                            <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
+                                <option value="">Category (Opt.)</option>
+                                {categories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
+                            </select>
+                            <button onClick={handleAddNewExpense} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded">Add</button>
+                        </div>
+                        <label className="flex items-center mt-2 cursor-pointer text-sm text-gray-300">
+                            <input
+                                type="checkbox"
+                                checked={newIsVariable}
+                                onChange={(e) => setNewIsVariable(e.target.checked)}
+                                className="mr-2 w-4 h-4"
+                            />
+                            <span>Variable amount (requires approval each month)</span>
+                        </label>
+                    </div>
+
+                    {isLoading ? <p>Loading...</p> :
                             <>
-                                <table className="min-w-full divide-y divide-gray-700">
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-700">
                                     <thead className="bg-gray-700">
                                         <tr>
                                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase">Description</th>
@@ -2109,75 +2144,10 @@
                                         ))}
                                     </tbody>
                                 </table>
+                                </div>
                             </>
                         }
-                         {expenses.length === 0 && !isLoading && <p className="text-gray-500 py-4 text-center">You have no recurring expenses set up.</p>}
-                    </div>
-                    <div className="bg-gray-800 shadow rounded-lg p-6">
-                        <h2 className="text-xl font-bold text-white mb-4">Add New Bill</h2>
-                        <form onSubmit={handleAddNewExpense}>
-                            <div className="mb-4">
-                                <label className="block text-gray-400 mb-2">Description</label>
-                                <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" placeholder="e.g., Netflix"/>
-                            </div>
-                            {!newIsVariable && (
-                                <div className="mb-4">
-                                    <label className="block text-gray-400 mb-2">Amount</label>
-                                    <input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" placeholder="15.99"/>
-                                </div>
-                            )}
-                            <div className="mb-4">
-                                <label className="block text-gray-400 mb-2">Due Day</label>
-                                <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" />
-                            </div>
-                            <div className="mb-4">
-                                <label className="block text-gray-400 mb-2">Pay From Account</label>
-                                <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
-                                    <option value="">-- Select an Account --</option>
-                                    {accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CREDIT_CARD'].includes(acc.type)).map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="mb-4">
-                                <label className="block text-gray-400 mb-2">Category (Optional)</label>
-                                <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
-                                    <option value="">-- No Category --</option>
-                                    {categories.map(cat => (
-                                        <option key={cat.category_id} value={cat.category_id}>
-                                            {cat.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="mb-4">
-                                <label className="flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={newIsVariable}
-                                        onChange={(e) => setNewIsVariable(e.target.checked)}
-                                        className="mr-2 w-4 h-4"
-                                    />
-                                    <span className="text-gray-400">Variable amount (requires approval each month)</span>
-                                </label>
-                            </div>
-                            {newIsVariable && (
-                                <div className="mb-6">
-                                    <label className="block text-gray-400 mb-2">Estimated Amount</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={newEstimatedAmount}
-                                        onChange={(e) => setNewEstimatedAmount(e.target.value)}
-                                        className="w-full bg-gray-700 text-white p-2 rounded"
-                                        placeholder="Typical amount"
-                                    />
-                                </div>
-                            )}
-                             {error && <p className="text-red-400 mb-4 text-center">{error}</p>}
-                            <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">
-                                + Add Recurring Expense
-                            </button>
-                        </form>
-                    </div>
+                    {expenses.length === 0 && !isLoading && <p className="text-gray-500 py-4 text-center">You have no recurring expenses set up.</p>}
                 </div>
             );
         }
