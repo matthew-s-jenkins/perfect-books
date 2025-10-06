@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS loans (
 -- Simulation State table
 CREATE TABLE IF NOT EXISTS simulation_state (
     user_id INT PRIMARY KEY,
-    current_date DATE NOT NULL,
+    `current_date` DATE NOT NULL,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
