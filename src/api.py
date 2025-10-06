@@ -989,6 +989,21 @@ def migrate_database():
                 ADD COLUMN entry_id INT AS (ledger_id) VIRTUAL
             """)
 
+        # Add frequency column to recurring_expenses (legacy code uses ENUM instead of frequency_days)
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'recurring_expenses'
+            AND COLUMN_NAME = 'frequency'
+        """)
+
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE recurring_expenses
+                ADD COLUMN frequency ENUM('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY') NULL
+            """)
+
         conn.commit()
         cursor.close()
         conn.close()
