@@ -1800,6 +1800,10 @@ class BusinessSimulator:
                         is_due_for_payment = False
                         last_processed = expense.get('last_processed_date') # Use .get() for safety
 
+                        # Ensure last_processed is a date object (not datetime)
+                        if last_processed and isinstance(last_processed, datetime.datetime):
+                            last_processed = last_processed.date()
+
                         if not last_processed:
                             # If it's never been paid, it's due today.
                             is_due_for_payment = True
@@ -1864,6 +1868,10 @@ class BusinessSimulator:
                     if current_day.day == income_effective_due_day:
                         is_due_for_deposit = False
                         last_processed = income.get('last_processed_date')
+
+                        # Ensure last_processed is a date object (not datetime)
+                        if last_processed and isinstance(last_processed, datetime.datetime):
+                            last_processed = last_processed.date()
 
                         if not last_processed:
                             is_due_for_deposit = True
