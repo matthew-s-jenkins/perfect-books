@@ -68,7 +68,7 @@ Most personal finance apps are glorified spreadsheets. Perfect Books proves you 
 
 ### Interactive Web Dashboard
 
-![Perfect Books Demo](screenshots/v4reactDashboard.gif)
+![Perfect Books Demo](screenshots/v4ReactDashboard.gif)
 
 *Multi-page React interface with real-time financial tracking, expense categorization, and automated recurring bill management.*
 
