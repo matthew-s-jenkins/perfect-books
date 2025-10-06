@@ -922,7 +922,7 @@ def init_database():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/rebuild_db', methods=['POST'])
+@app.route('/api/rebuild_db', methods=['GET', 'POST'])
 def rebuild_database():
     """DROP ALL tables and rebuild from scratch with correct schema."""
     try:
