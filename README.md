@@ -17,9 +17,9 @@
 - [Core Features](#core-features)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Running the Application](#running-the-application)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Running the Application](#running-the-application)
 - [Architecture](#architecture)
 - [Database Schema](#database-schema)
 - [API Documentation](#api-documentation)
@@ -140,58 +140,58 @@ Before running Perfect Books, ensure you have:
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/perfect-books.git
-   cd perfect-books
-   ```
+   ```bash
+   git clone https://github.com/yourusername/perfect-books.git
+   cd perfect-books
+   ```
 
 2. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 3. **Configure environment variables**
 
-   Create a `.env` file in the project root:
-   ```env
-   DB_HOST=localhost
-   DB_PORT=3306
-   DB_USER=your_mysql_username
-   DB_PASSWORD=your_mysql_password
-   DB_NAME=perfect_books
-   ```
+   Create a `.env` file in the project root:
+   ```env
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=your_mysql_username
+   DB_PASSWORD=your_mysql_password
+   DB_NAME=perfect_books
+   ```
 
 4. **Initialize the database**
 
-   ⚠️ **Warning**: This will drop and recreate the `perfect_books` database!
+   ⚠️ **Warning**: This will drop and recreate the `perfect_books` database!
 
-   ```bash
-   python src/setup.py
-   ```
+   ```bash
+   python src/setup.py
+   ```
 
-   You should see output confirming table creation.
+   You should see output confirming table creation.
 
 ### Running the Application
 
 #### Web Interface (Recommended)
 
 1. **Start the API server**
-   ```bash
-   python src/api.py
-   ```
-   You should see: `* Running on http://127.0.0.1:5000`
+   ```bash
+   python src/api.py
+   ```
+   You should see: `* Running on http://127.0.0.1:5000`
 
 2. **Open the interface**
-   - **Simple**: Double-click `index.html` to open directly in your browser
-   - **Server** (for better compatibility):
-     ```bash
-     python -m http.server 8080
-     ```
-     Then navigate to: `http://localhost:8080/index.html`
+   - **Simple**: Double-click `index.html` to open directly in your browser
+  - **Server** (for better compatibility):
+     ```bash
+     python -m http.server 8080
+     ```
+     Then navigate to: `http://localhost:8080/index.html`
 
 3. **Register/Login**
-   - First visit: Click "Register" to create an account
-   - Subsequent visits: Login with your credentials
+   - First visit: Click "Register" to create an account
+   - Subsequent visits: Login with your credentials
 
 #### Terminal Interface (Alternative)
 
@@ -218,24 +218,24 @@ Perfect Books uses a **stateless engine** architecture:
 
 ```
 ┌─────────────┐
-│   Browser   │
-│  (React UI) │
+│   Browser   │
+│  (React UI) │
 └─────┬───────┘
-      │ HTTPS (with credentials)
-      ↓
+      │ HTTPS (with credentials)
+      ↓
 ┌─────────────────┐
-│  Flask API      │
-│  + Flask-Login  │ ← Session cookies
+│  Flask API      │
+│  + Flask-Login  │ ← Session cookies
 └────────┬────────┘
-         │ Validates user_id on every request
-         ↓
+         │ Validates user_id on every request
+         ↓
 ┌─────────────────┐
 │ Business Engine │ ← Stateless methods
 └────────┬────────┘
-         │
-         ↓
+         │
+         ↓
 ┌─────────────────┐
-│  MySQL Database │ ← User data segregated
+│  MySQL Database │ ← User data segregated
 └─────────────────┘
 ```
 
@@ -245,13 +245,13 @@ Every financial transaction creates balanced ledger entries:
 
 **Example: Pay $50 for groceries from checking**
 ```
-DR: Expenses         $50  (increase)
-CR: Checking Account $50  (decrease)
+DR: Expenses         $50  (increase)
+CR: Checking Account $50  (decrease)
 ```
 
 **Example: Transfer $100 from checking to savings**
 ```
-DR: Savings Account  $100 (increase)
+DR: Savings Account  $100 (increase)
 CR: Checking Account $100 (decrease)
 ```
 
@@ -356,18 +356,18 @@ The database follows **normalized design principles** with referential integrity
 
 ### 🚧 In Development (v2.1)
 - [ ] **Variable Recurring Expenses** - Handle bills that change monthly
-  - Electric, gas, water bills with variable amounts
-  - Pending transaction approval system
-  - "Review pending bills" notification on login
-  - Enter actual amount vs estimated amount
+  - Electric, gas, water bills with variable amounts
+  - Pending transaction approval system
+  - "Review pending bills" notification on login
+  - Enter actual amount vs estimated amount
 - [ ] **Loan Payment Split** - Principal vs Interest breakdown
-  - Proper accounting for loan payments
-  - Track payment history with amortization
-  - Show principal/interest breakdown in UI
+  - Proper accounting for loan payments
+  - Track payment history with amortization
+  - Show principal/interest breakdown in UI
 - [ ] **Credit Card Interest Automation**
-  - Automatic monthly interest calculation
-  - APR-based interest accrual
-  - Payment allocation logic
+  - Automatic monthly interest calculation
+  - APR-based interest accrual
+  - Payment allocation logic
 
 ### 🔮 Planned Features (v3.0)
 - [ ] Budget planning and alerts
