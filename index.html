@@ -3084,7 +3084,15 @@
                         const failedIndex = responses.findIndex(r => !r.ok);
                         const endpoints = ['accounts', 'ledger', 'income descriptions', 'expense descriptions', 'expense categories', 'meter summary', 'n-day average', 'status'];
                         console.error(`Failed to fetch ${endpoints[failedIndex]}:`, responses[failedIndex].status);
-                        window.location.href = 'login.html';
+
+                        // Show error instead of redirecting immediately
+                        const errorText = await responses[failedIndex].text();
+                        alert(`Error loading ${endpoints[failedIndex]}: ${errorText}`);
+
+                        // Only redirect to login if it's a 401 (unauthorized)
+                        if (responses[failedIndex].status === 401) {
+                            window.location.href = 'login.html';
+                        }
                         return;
                     }
                     const [accountsData, ledgerData, incomeDescData, expenseDescData, categoriesData, meterSummaryData, averageDataResponse, statusData] = await Promise.all(responses.map(res => res.json()));
