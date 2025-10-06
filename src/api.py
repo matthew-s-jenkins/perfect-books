@@ -1008,6 +1008,12 @@ def migrate_database():
                 ADD COLUMN frequency ENUM('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY') NULL
             """)
 
+        # Increase transaction_uuid length to accommodate full UUIDs with timestamps
+        cursor.execute("""
+            ALTER TABLE financial_ledger
+            MODIFY COLUMN transaction_uuid VARCHAR(100)
+        """)
+
         conn.commit()
         cursor.close()
         conn.close()
