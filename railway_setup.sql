@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS financial_ledger (
     user_id INT NOT NULL,
     transaction_uuid VARCHAR(36) NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    transaction_date DATE NULL,
     account_id INT NOT NULL,
     transaction_type ENUM('DEBIT', 'CREDIT') NOT NULL,
     amount DECIMAL(12,2) NOT NULL,

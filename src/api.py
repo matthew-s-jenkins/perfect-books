@@ -922,6 +922,31 @@ def init_database():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/migrate_db', methods=['GET', 'POST'])
+def migrate_database():
+    """Add missing columns to existing tables."""
+    try:
+        import mysql.connector
+        from railway_config import RAILWAY_DB_CONFIG
+
+        conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
+        cursor = conn.cursor()
+
+        # Add transaction_date column if it doesn't exist
+        cursor.execute("""
+            ALTER TABLE financial_ledger
+            ADD COLUMN IF NOT EXISTS transaction_date DATE NULL
+            AFTER timestamp
+        """)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "message": "Database migrated successfully!"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # --- RUN THE APP ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000, use_reloader=False)
