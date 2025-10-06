@@ -974,6 +974,21 @@ def migrate_database():
             MODIFY COLUMN amount DECIMAL(12,2) NULL
         """)
 
+        # Add entry_id as alias for ledger_id (check if it exists first)
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'financial_ledger'
+            AND COLUMN_NAME = 'entry_id'
+        """)
+
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE financial_ledger
+                ADD COLUMN entry_id INT AS (ledger_id) VIRTUAL
+            """)
+
         conn.commit()
         cursor.close()
         conn.close()
