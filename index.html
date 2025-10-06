@@ -1754,8 +1754,8 @@
                             <tr>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase">Description</th>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Amount</th>
-                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase">Day</th>
-                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase">Account</th>
+                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-center">Day</th>
+                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden sm:table-cell">Account</th>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Actions</th>
                             </tr>
                         </thead>
@@ -1764,10 +1764,10 @@
                                 <React.Fragment key={inc.income_id}>
                                     {editingId === inc.income_id ? (
                                         <tr className="bg-gray-750">
-                                            <td className="px-2 py-3">
-                                                <input type="text" value={editingDescription} onChange={(e) => setEditingDescription(e.target.value)} className="w-full bg-gray-600 text-white p-1 rounded text-sm" />
+                                            <td className="px-2 py-2">
+                                                <input type="text" value={editingDescription} onChange={(e) => setEditingDescription(e.target.value)} className="w-full min-w-[100px] bg-gray-600 text-white p-1 rounded text-xs" />
                                             </td>
-                                            <td className="px-2 py-3 text-right">
+                                            <td className="px-2 py-2 text-right">
                                                 <input
                                                     type="text"
                                                     value={editingAmount ? parseFloat(editingAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : ''}
@@ -1775,36 +1775,36 @@
                                                         const val = e.target.value.replace(/,/g, '');
                                                         if (!isNaN(val) || val === '') setEditingAmount(val);
                                                     }}
-                                                    className="w-full bg-gray-600 text-white p-1 rounded text-sm text-right"
+                                                    className="w-20 sm:w-24 bg-gray-600 text-white p-1 rounded text-xs text-right"
                                                 />
                                             </td>
-                                            <td className="px-2 py-3">
-                                                <input type="number" min="1" max="31" value={editingDepositDay} onChange={(e) => setEditingDepositDay(e.target.value)} className="w-20 bg-gray-600 text-white p-1 rounded text-sm" />
+                                            <td className="px-2 py-2 text-center">
+                                                <input type="number" min="1" max="31" value={editingDepositDay} onChange={(e) => setEditingDepositDay(e.target.value)} className="w-12 bg-gray-600 text-white p-1 rounded text-xs text-center" />
                                             </td>
-                                            <td className="px-2 py-3 text-sm text-gray-400">{inc.deposit_account_name}</td>
-                                            <td className="px-2 py-3 text-right text-sm space-x-2">
-                                                <button onClick={() => handleUpdateIncome(inc.income_id)} className="text-green-400 hover:text-green-300">Save</button>
-                                                <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300">Cancel</button>
+                                            <td className="px-2 py-2 text-xs text-gray-400 hidden sm:table-cell">{inc.deposit_account_name}</td>
+                                            <td className="px-1 py-2 text-right text-xs whitespace-nowrap">
+                                                <button onClick={() => handleUpdateIncome(inc.income_id)} className="text-green-400 hover:text-green-300 px-1">✓</button>
+                                                <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300 px-1">✕</button>
                                             </td>
                                         </tr>
                                     ) : (
                                         <tr>
-                                            <td className="px-2 py-3 text-sm text-white">
+                                            <td className="px-2 py-2 text-xs sm:text-sm text-white">
                                                 {inc.description}
-                                                {!!inc.is_variable && <span className="ml-2 px-1 bg-gray-600 text-gray-300 text-xs rounded">VAR</span>}
+                                                {!!inc.is_variable && <span className="ml-1 px-1 bg-gray-600 text-gray-300 text-xs rounded">VAR</span>}
                                             </td>
-                                            <td className="px-2 py-3 text-sm text-right font-mono text-green-400">
+                                            <td className="px-2 py-2 text-xs sm:text-sm text-right font-mono text-green-400 whitespace-nowrap">
                                                 {inc.is_variable ? (
                                                     <span className="text-gray-400 text-xs">~{parseFloat(inc.estimated_amount || inc.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
                                                 ) : (
                                                     parseFloat(inc.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
                                                 )}
                                             </td>
-                                            <td className="px-2 py-3 text-sm text-white">{inc.deposit_day_of_month}</td>
-                                            <td className="px-2 py-3 text-sm text-gray-400">{inc.deposit_account_name}</td>
-                                            <td className="px-2 py-3 text-right text-sm space-x-2">
-                                                <button onClick={() => handleEditClick(inc)} className="text-cyan-400 hover:text-cyan-300">Edit</button>
-                                                <button onClick={() => handleDeleteIncome(inc.income_id)} className="text-red-400 hover:text-red-300">Delete</button>
+                                            <td className="px-2 py-2 text-xs sm:text-sm text-center text-white">{inc.deposit_day_of_month}</td>
+                                            <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden sm:table-cell">{inc.deposit_account_name}</td>
+                                            <td className="px-1 py-2 text-right text-xs whitespace-nowrap">
+                                                <button onClick={() => handleEditClick(inc)} className="text-cyan-400 hover:text-cyan-300 px-1">Edit</button>
+                                                <button onClick={() => handleDeleteIncome(inc.income_id)} className="text-red-400 hover:text-red-300 px-1">Del</button>
                                             </td>
                                         </tr>
                                     )}
@@ -2053,9 +2053,9 @@
                                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase">Description</th>
                                             <th className="px-2 py-2 text-right text-xs font-medium text-gray-300 uppercase">Amount</th>
                                             <th className="px-2 py-2 text-center text-xs font-medium text-gray-300 uppercase">Due</th>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase">Category</th>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase">Account</th>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase">Last Paid</th>
+                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase hidden md:table-cell">Category</th>
+                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase hidden sm:table-cell">Account</th>
+                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase hidden lg:table-cell">Last Paid</th>
                                             <th className="px-2 py-2 text-right text-xs font-medium text-gray-300 uppercase">Actions</th>
                                         </tr>
                                     </thead>
@@ -2065,44 +2065,44 @@
                                             <tr>
                                                 {editingId === exp.expense_id ? (
                                                     <>
-                                                        <td className="px-2 py-2"><input type="text" value={editingDescription} onChange={e => setEditingDescription(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-full"/></td>
+                                                        <td className="px-2 py-2"><input type="text" value={editingDescription} onChange={e => setEditingDescription(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-full min-w-[100px] text-xs"/></td>
                                                         <td className="px-2 py-2">
                                                             {!editingIsVariable && (
-                                                                <input type="number" step="0.01" value={editingAmount} onChange={e => setEditingAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-24 text-right"/>
+                                                                <input type="number" step="0.01" value={editingAmount} onChange={e => setEditingAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-20 text-right text-xs"/>
                                                             )}
                                                             {editingIsVariable && (
-                                                                <input type="number" step="0.01" value={editingEstimatedAmount} onChange={e => setEditingEstimatedAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-24 text-right" placeholder="Est."/>
+                                                                <input type="number" step="0.01" value={editingEstimatedAmount} onChange={e => setEditingEstimatedAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-20 text-right text-xs" placeholder="Est."/>
                                                             )}
                                                         </td>
-                                                        <td className="px-2 py-2"><input type="number" value={editingDueDay} onChange={e => setEditingDueDay(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-16 text-center"/></td>
-                                                        <td className="px-2 py-2">
+                                                        <td className="px-2 py-2"><input type="number" value={editingDueDay} onChange={e => setEditingDueDay(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-12 text-center text-xs"/></td>
+                                                        <td className="px-2 py-2 hidden md:table-cell">
                                                             <select value={editingCategoryId} onChange={e => setEditingCategoryId(e.target.value)} className="bg-gray-700 text-white p-1 rounded text-xs w-full">
                                                                 <option value="">No Category</option>
                                                                 {categories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
                                                             </select>
                                                         </td>
-                                                        <td className="px-2 py-2 text-sm text-gray-500">{exp.payment_account_name}</td>
-                                                        <td className="px-2 py-2"></td>
-                                                        <td className="px-2 py-2 text-sm text-right space-x-2">
-                                                            <button onClick={() => handleUpdateExpense(exp.expense_id)} className="text-green-500 hover:text-green-400 text-xs font-semibold">Save</button>
-                                                            <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300 text-xs font-semibold">Cancel</button>
+                                                        <td className="px-2 py-2 text-xs text-gray-500 hidden sm:table-cell">{exp.payment_account_name}</td>
+                                                        <td className="px-2 py-2 hidden lg:table-cell"></td>
+                                                        <td className="px-1 py-2 text-xs text-right whitespace-nowrap">
+                                                            <button onClick={() => handleUpdateExpense(exp.expense_id)} className="text-green-500 hover:text-green-400 px-1">✓</button>
+                                                            <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300 px-1">✕</button>
                                                         </td>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <td className="px-2 py-3 text-sm text-white">
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-white">
                                                             {exp.description}
-                                                            {!!exp.is_variable && <span className="ml-2 px-1 bg-gray-600 text-gray-300 text-xs rounded">VAR</span>}
+                                                            {!!exp.is_variable && <span className="ml-1 px-1 bg-gray-600 text-gray-300 text-xs rounded">VAR</span>}
                                                         </td>
-                                                        <td className="px-2 py-3 text-sm text-right font-mono text-red-400">
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-right font-mono text-red-400 whitespace-nowrap">
                                                             {exp.is_variable ? (
                                                                 <span className="text-gray-400 text-xs">~{parseFloat(exp.estimated_amount || exp.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
                                                             ) : (
                                                                 parseFloat(exp.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
                                                             )}
                                                         </td>
-                                                        <td className="px-2 py-3 text-sm text-center">{exp.due_day_of_month}</td>
-                                                        <td className="px-2 py-3 text-sm">
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-center">{exp.due_day_of_month}</td>
+                                                        <td className="px-2 py-2 text-xs sm:text-sm hidden md:table-cell">
                                                             {exp.category_name ? (
                                                                 <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium" style={{backgroundColor: exp.category_color + '20', color: exp.category_color}}>
                                                                     {exp.category_name}
@@ -2111,11 +2111,11 @@
                                                                 <span className="text-gray-500 text-xs">None</span>
                                                             )}
                                                         </td>
-                                                        <td className="px-2 py-3 text-sm text-gray-400">{exp.payment_account_name}</td>
-                                                        <td className="px-2 py-3 text-sm text-gray-400">{exp.last_processed_date ? new Date(exp.last_processed_date).toLocaleDateString('en-CA') : 'Never'}</td>
-                                                        <td className="px-2 py-3 text-sm text-right space-x-1">
-                                                            <button onClick={() => handleEditClick(exp)} className="text-cyan-400 hover:text-cyan-300 text-xs font-semibold">Edit</button>
-                                                            <button onClick={() => handleDelete(exp.expense_id)} className="text-red-500 hover:text-red-400 text-xs font-semibold">Delete</button>
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden sm:table-cell">{exp.payment_account_name}</td>
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden lg:table-cell">{exp.last_processed_date ? new Date(exp.last_processed_date).toLocaleDateString('en-CA') : 'Never'}</td>
+                                                        <td className="px-1 py-2 text-xs text-right whitespace-nowrap">
+                                                            <button onClick={() => handleEditClick(exp)} className="text-cyan-400 hover:text-cyan-300 px-1">Edit</button>
+                                                            <button onClick={() => handleDelete(exp.expense_id)} className="text-red-500 hover:text-red-400 px-1">Del</button>
                                                         </td>
                                                     </>
                                                 )}
