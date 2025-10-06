@@ -1931,7 +1931,16 @@ class BusinessSimulator:
                 (user_id,)
             )
             last_entry = cursor.fetchone()
-            if not last_entry or last_entry['transaction_date'] < final_date:
+
+            # Convert last transaction_date to date for comparison (it's a datetime in DB)
+            last_transaction_date = None
+            if last_entry and last_entry['transaction_date']:
+                if isinstance(last_entry['transaction_date'], datetime.datetime):
+                    last_transaction_date = last_entry['transaction_date'].date()
+                else:
+                    last_transaction_date = last_entry['transaction_date']
+
+            if not last_transaction_date or last_transaction_date < final_date:
                 uuid = f"time-adv-{user_id}-{int(time.time())}"
                 cursor.execute(
                     "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description) VALUES (%s, %s, %s, 'System', 'Time Advanced')",
