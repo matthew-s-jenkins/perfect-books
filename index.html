@@ -3152,8 +3152,8 @@
                             <div>
                                 {meterData && <Meter meterData={meterData} averageData={averageData} />}
                                 <BalanceSheetSummary accounts={accounts} />
-                                <div className="flex flex-wrap gap-2 mb-6 justify-between">
-                                    <div className="flex flex-wrap gap-2">
+                                <div className="flex flex-wrap gap-2 mb-6 justify-between items-center">
+                                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
                                         <button onClick={() => setActivePage('dashboard')} className={navButtonClasses('dashboard')}>Dashboard</button>
                                         <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>Accounts</button>
                                         <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>Ledger</button>
@@ -3162,7 +3162,7 @@
                                         <button onClick={() => setActivePage('analysis')} className={navButtonClasses('analysis')}>Analysis</button>
                                         <button onClick={() => setActivePage('reports')} className={navButtonClasses('reports')}>Reports</button>
                                     </div>
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
                                         <button
                                             onClick={() => setShowPendingModal(true)}
                                             className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded-md relative"
