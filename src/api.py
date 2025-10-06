@@ -949,6 +949,23 @@ def migrate_database():
                 AFTER timestamp
             """)
 
+        # Check and add legacy debit/credit/account columns for old code compatibility
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'financial_ledger'
+            AND COLUMN_NAME = 'debit'
+        """)
+
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE financial_ledger
+                ADD COLUMN debit DECIMAL(12,2) DEFAULT 0.00,
+                ADD COLUMN credit DECIMAL(12,2) DEFAULT 0.00,
+                ADD COLUMN account VARCHAR(100) NULL
+            """)
+
         conn.commit()
         cursor.close()
         conn.close()
