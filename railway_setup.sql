@@ -42,7 +42,18 @@ CREATE TABLE IF NOT EXISTS financial_ledger (
     INDEX idx_transaction_uuid (transaction_uuid)
 ) ENGINE=InnoDB;
 
--- Categories table
+-- Categories table (legacy name: expense_categories)
+CREATE TABLE IF NOT EXISTS expense_categories (
+    category_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    color VARCHAR(7) DEFAULT '#6B7280',
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Categories table (newer version - not currently used)
 CREATE TABLE IF NOT EXISTS categories (
     category_id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
