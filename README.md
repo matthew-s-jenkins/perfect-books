@@ -146,10 +146,10 @@ Before running Perfect Books, ensure you have:
 ### Installation
 
 1. **Clone the repository**
- ```bash
- git clone https://github.com/yourusername/perfect-books.git
- cd perfect-books
- ```
+ ```bash
+ git clone https://github.com/yourusername/perfect-books.git
+ cd perfect-books
+ ```
 
 2. **Install Python dependencies**
 ```bash
@@ -362,6 +362,11 @@ The database follows **normalized design principles** with referential integrity
 - ✅ React-based responsive UI
 
 ### 🚧 In Development (v2.1)
+- [ ] **Variable Recurring Expenses** - Handle bills that change monthly
+  - Electric, gas, water bills with variable amounts
+  - Pending transaction approval system
+  - "Review pending bills" notification on login
+  - Enter actual amount vs estimated amount
 - [ ] **Loan Payment Split** - Principal vs Interest breakdown
   - Proper accounting for loan payments
   - Track payment history with amortization
