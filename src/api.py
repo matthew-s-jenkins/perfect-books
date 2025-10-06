@@ -1030,6 +1030,21 @@ def migrate_database():
             ) ENGINE=InnoDB
         """)
 
+        # Add description column to recurring_expenses if missing
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'recurring_expenses'
+            AND COLUMN_NAME = 'description'
+        """)
+
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE recurring_expenses
+                ADD COLUMN description VARCHAR(255) NULL
+            """)
+
         conn.commit()
         cursor.close()
         conn.close()
