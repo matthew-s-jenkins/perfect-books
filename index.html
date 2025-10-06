@@ -211,27 +211,26 @@
 
             return (
                 <div className="bg-gray-800 shadow rounded-lg p-4 mb-6">
-                    <h2 className="text-sm font-medium text-gray-300 mb-3">Balance Sheet Check (Assets = Liabilities + Equity)</h2>
+                    <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-sm font-medium text-gray-300">Balance Sheet Check (Assets = Liabilities + Equity)</h2>
+                        <p className={`text-sm sm:text-base font-bold px-3 py-1 rounded ${isBalanced ? 'bg-green-900 text-green-400' : 'bg-red-900 text-red-400'}`}>
+                            {isBalanced ? 'Balanced' : 'Error'}
+                        </p>
+                    </div>
                     <div className="flex items-center justify-around text-center font-mono">
-                        <div className="w-1/4">
+                        <div className="flex-1">
                             <p className="text-xs text-gray-500">Total Assets</p>
-                            <p className="text-lg text-green-400">{totals.assets.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                            <p className="text-sm sm:text-lg text-green-400">{totals.assets.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
                         </div>
-                        <div className="text-2xl text-gray-600">=</div>
-                         <div className="w-1/4">
+                        <div className="text-xl sm:text-2xl text-gray-600 px-1 sm:px-2">=</div>
+                         <div className="flex-1">
                             <p className="text-xs text-gray-500">Total Liabilities</p>
-                            <p className="text-lg text-red-400">{totals.liabilities.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                            <p className="text-sm sm:text-lg text-red-400">{totals.liabilities.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
                         </div>
-                        <div className="text-2xl text-gray-600">+</div>
-                        <div className="w-1/4">
+                        <div className="text-xl sm:text-2xl text-gray-600 px-1 sm:px-2">+</div>
+                        <div className="flex-1">
                             <p className="text-xs text-gray-500">Total Equity</p>
-                            <p className="text-lg text-cyan-400">{totals.equity.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
-                        </div>
-                        <div className="w-1/4 pl-4 border-l border-gray-700">
-                             <p className="text-xs text-gray-500">Result</p>
-                             <p className={`text-lg font-bold ${isBalanced ? 'text-green-400' : 'text-red-400'}`}>
-                                {isBalanced ? 'Balanced' : 'Error'}
-                            </p>
+                            <p className="text-sm sm:text-lg text-cyan-400">{totals.equity.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
                         </div>
                     </div>
                 </div>
@@ -3153,15 +3152,17 @@
                             <div>
                                 {meterData && <Meter meterData={meterData} averageData={averageData} />}
                                 <BalanceSheetSummary accounts={accounts} />
-                                <div className="flex flex-wrap gap-2 mb-6">
-                                    <button onClick={() => setActivePage('dashboard')} className={navButtonClasses('dashboard')}>Dashboard</button>
-                                    <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>Accounts</button>
-                                    <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>Ledger</button>
-                                    <button onClick={() => setActivePage('recurring')} className={navButtonClasses('recurring')}>Recurring</button>
-                                    <button onClick={() => setActivePage('categories')} className={navButtonClasses('categories')}>Categories</button>
-                                    <button onClick={() => setActivePage('analysis')} className={navButtonClasses('analysis')}>Analysis</button>
-                                    <button onClick={() => setActivePage('reports')} className={navButtonClasses('reports')}>Reports</button>
-                                    <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
+                                <div className="flex flex-wrap gap-2 mb-6 justify-between">
+                                    <div className="flex flex-wrap gap-2">
+                                        <button onClick={() => setActivePage('dashboard')} className={navButtonClasses('dashboard')}>Dashboard</button>
+                                        <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>Accounts</button>
+                                        <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>Ledger</button>
+                                        <button onClick={() => setActivePage('recurring')} className={navButtonClasses('recurring')}>Recurring</button>
+                                        <button onClick={() => setActivePage('categories')} className={navButtonClasses('categories')}>Categories</button>
+                                        <button onClick={() => setActivePage('analysis')} className={navButtonClasses('analysis')}>Analysis</button>
+                                        <button onClick={() => setActivePage('reports')} className={navButtonClasses('reports')}>Reports</button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
                                         <button
                                             onClick={() => setShowPendingModal(true)}
                                             className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded-md relative"
