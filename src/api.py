@@ -922,6 +922,43 @@ def init_database():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/rebuild_db', methods=['POST'])
+def rebuild_database():
+    """DROP ALL tables and rebuild from scratch with correct schema."""
+    try:
+        import mysql.connector
+        from railway_config import RAILWAY_DB_CONFIG
+        import os
+
+        conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
+        cursor = conn.cursor()
+
+        # Drop all tables in correct order (reverse of creation due to foreign keys)
+        tables = ['pending_transactions', 'recurring_income', 'recurring_expenses',
+                  'financial_ledger', 'loans', 'expense_categories', 'accounts', 'users']
+
+        cursor.execute('SET FOREIGN_KEY_CHECKS = 0')
+        for table in tables:
+            cursor.execute(f'DROP TABLE IF EXISTS {table}')
+        cursor.execute('SET FOREIGN_KEY_CHECKS = 1')
+
+        # Read and execute the complete schema
+        sql_path = os.path.join(os.path.dirname(__file__), '..', 'railway_setup.sql')
+        with open(sql_path, 'r') as f:
+            sql_script = f.read()
+
+        for statement in sql_script.split(';'):
+            if statement.strip():
+                cursor.execute(statement)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "message": "Database rebuilt successfully! All data cleared."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/migrate_db', methods=['GET', 'POST'])
 def migrate_database():
     """Add missing columns to existing tables."""
