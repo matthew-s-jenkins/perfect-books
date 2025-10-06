@@ -1014,6 +1014,22 @@ def migrate_database():
             MODIFY COLUMN transaction_uuid VARCHAR(100)
         """)
 
+        # Create recurring_income table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recurring_income (
+                income_id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                amount DECIMAL(12,2) NOT NULL,
+                frequency ENUM('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY') NOT NULL,
+                destination_account_id INT NOT NULL,
+                last_processed_date DATE NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (destination_account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB
+        """)
+
         conn.commit()
         cursor.close()
         conn.close()
