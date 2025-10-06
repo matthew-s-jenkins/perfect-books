@@ -300,6 +300,8 @@ def add_recurring_expense_api():
     payment_account_id = data.get('payment_account_id')
     due_day_of_month = data.get('due_day_of_month')
     category_id = data.get('category_id')  # Optional category
+    is_variable = data.get('is_variable', False)
+    estimated_amount = data.get('estimated_amount')
 
     if not all([description, amount, payment_account_id, due_day_of_month]):
         return jsonify({"success": False, "message": "All fields are required."}), 400
@@ -310,7 +312,9 @@ def add_recurring_expense_api():
         amount=amount,
         payment_account_id=payment_account_id,
         due_day_of_month=due_day_of_month,
-        category_id=category_id
+        category_id=category_id,
+        is_variable=is_variable,
+        estimated_amount=estimated_amount
     )
     if success:
         return jsonify({"success": True, "message": message})

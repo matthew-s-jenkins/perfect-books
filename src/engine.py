@@ -1008,7 +1008,7 @@ class BusinessSimulator:
                 if conn: conn.close()
 
 
-    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month, category_id=None):
+    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month, category_id=None, is_variable=False, estimated_amount=None):
         """
         Add a new monthly recurring expense with optional category.
 
@@ -1061,8 +1061,8 @@ class BusinessSimulator:
                     return False, "Invalid category specified."
 
             cursor.execute(
-                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id) VALUES (%s, %s, %s, 'MONTHLY', %s, %s, %s)",
-                (user_id, description, amount, payment_account_id, due_day_of_month, category_id)
+                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount) VALUES (%s, %s, %s, 'MONTHLY', %s, %s, %s, %s, %s)",
+                (user_id, description, amount, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount)
             )
             conn.commit()
             return True, f"Recurring expense '{description}' added."
