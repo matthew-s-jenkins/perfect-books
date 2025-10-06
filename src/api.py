@@ -966,6 +966,12 @@ def migrate_database():
                 ADD COLUMN account VARCHAR(100) NULL
             """)
 
+        # Make account_id nullable for legacy code compatibility
+        cursor.execute("""
+            ALTER TABLE financial_ledger
+            MODIFY COLUMN account_id INT NULL
+        """)
+
         conn.commit()
         cursor.close()
         conn.close()
