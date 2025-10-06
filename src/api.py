@@ -892,15 +892,17 @@ def get_dashboard_data():
 # DATABASE INITIALIZATION (Railway only)
 # =============================================================================
 
-@app.route('/api/init_db', methods=['POST'])
+@app.route('/api/init_db', methods=['GET', 'POST'])
 def init_database():
     """Initialize Railway database tables. Run this once after deployment."""
     try:
         import mysql.connector
         from railway_config import RAILWAY_DB_CONFIG
+        import os
 
-        # Read the SQL file
-        with open('railway_setup.sql', 'r') as f:
+        # Read the SQL file from parent directory
+        sql_path = os.path.join(os.path.dirname(__file__), '..', 'railway_setup.sql')
+        with open(sql_path, 'r') as f:
             sql_script = f.read()
 
         # Connect and execute
