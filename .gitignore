@@ -19,3 +19,6 @@ venv/
 env/
 dashboard_error.log
 .env
+
+# Notes and documentation (private)
+notes/
