@@ -583,7 +583,39 @@ class BusinessSimulator:
         finally:
             cursor.close()
             conn.close()
-    
+
+    def get_expense_trends_by_category(self, user_id, start_date=None, end_date=None):
+        """Get daily expense trends by category for charting over time."""
+        conn, cursor = self._get_db_connection()
+        try:
+            if not start_date:
+                current_date = self._get_user_current_date(cursor, user_id)
+                start_date = current_date - datetime.timedelta(days=30)
+            if not end_date:
+                end_date = self._get_user_current_date(cursor, user_id)
+
+            query = """
+                SELECT
+                    DATE(l.transaction_date) as date,
+                    c.category_id,
+                    c.name as category_name,
+                    c.color as category_color,
+                    SUM(l.debit) as amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                GROUP BY DATE(l.transaction_date), c.category_id, c.name, c.color
+                ORDER BY date, c.name
+            """
+            cursor.execute(query, (user_id, start_date, end_date))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conn.close()
+
     def get_daily_net(self, user_id, for_date):
         conn, cursor = self._get_db_connection()
         try:
