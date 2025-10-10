@@ -22,3 +22,7 @@ dashboard_error.log
 
 # Notes and documentation (private)
 notes/
+
+# Development scripts and database files (private)
+scripts/
+db/
