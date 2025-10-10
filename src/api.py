@@ -584,6 +584,23 @@ def get_expense_analysis_api():
     except Exception as e:
         return jsonify({"error": f"An error occurred: {e}"}), 500
 
+@app.route('/api/expense_trends', methods=['GET'])
+@check_sim
+@login_required
+def get_expense_trends_api():
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        trends = sim.get_expense_trends_by_category(
+            user_id=current_user.id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return jsonify(trends)
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {e}"}), 500
+
 @app.route('/api/expense/category', methods=['PUT'])
 @check_sim
 @login_required
