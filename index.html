@@ -941,10 +941,9 @@
             const [dashboardData, setDashboardData] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [dateRange, setDateRange] = useState('30');
-            const pieChartRef = React.useRef(null);
-            const lineChartRef = React.useRef(null);
-            const pieChartInstance = React.useRef(null);
-            const lineChartInstance = React.useRef(null);
+            const [selectedChart, setSelectedChart] = useState('spending-category');
+            const chartRef = React.useRef(null);
+            const chartInstance = React.useRef(null);
 
             useEffect(() => {
                 loadDashboard();
@@ -953,19 +952,18 @@
             useEffect(() => {
                 if (!dashboardData) return;
 
-                // Use setTimeout to ensure canvas refs are ready
+                // Use setTimeout to ensure canvas ref is ready
                 const timer = setTimeout(() => {
-                    if (pieChartRef.current && lineChartRef.current) {
-                        createCharts();
+                    if (chartRef.current) {
+                        createChart();
                     }
                 }, 100);
 
                 return () => {
                     clearTimeout(timer);
-                    if (pieChartInstance.current) pieChartInstance.current.destroy();
-                    if (lineChartInstance.current) lineChartInstance.current.destroy();
+                    if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [dashboardData]);
+            }, [dashboardData, selectedChart]);
 
             const loadDashboard = async () => {
                 setIsLoading(true);
@@ -981,76 +979,321 @@
                 }
             };
 
-            const createCharts = () => {
-                // Destroy existing charts
-                if (pieChartInstance.current) pieChartInstance.current.destroy();
-                if (lineChartInstance.current) lineChartInstance.current.destroy();
+            const getAnimationConfig = () => ({
+                duration: 1000,
+                easing: 'easeInOutQuart',
+                delay: (context) => {
+                    let delay = 0;
+                    if (context.type === 'data' && context.mode === 'default') {
+                        delay = context.dataIndex * 50 + context.datasetIndex * 100;
+                    }
+                    return delay;
+                }
+            });
 
-                // Create pie chart for spending by category
-                if (dashboardData.spending_by_category && dashboardData.spending_by_category.length > 0) {
-                    const pieCtx = pieChartRef.current.getContext('2d');
-                    pieChartInstance.current = new Chart(pieCtx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: dashboardData.spending_by_category.map(c => c.name),
-                            datasets: [{
-                                data: dashboardData.spending_by_category.map(c => c.amount),
-                                backgroundColor: dashboardData.spending_by_category.map(c => c.color),
-                                borderWidth: 0
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    position: 'right',
-                                    labels: { color: '#e5e7eb', font: { size: 12 } }
-                                }
-                            }
-                        }
-                    });
+            const createChart = () => {
+                // Destroy existing chart
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
                 }
 
-                // Create line chart for net worth trend
-                if (dashboardData.net_worth_trend && dashboardData.net_worth_trend.length > 0) {
-                    const lineCtx = lineChartRef.current.getContext('2d');
-                    lineChartInstance.current = new Chart(lineCtx, {
-                        type: 'line',
-                        data: {
-                            labels: dashboardData.net_worth_trend.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
-                            datasets: [{
-                                label: 'Net Worth',
-                                data: dashboardData.net_worth_trend.map(d => Math.round(d.net_worth)),
-                                borderColor: '#06b6d4',
-                                backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                                fill: true,
-                                tension: 0.4
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false }
-                            },
-                            scales: {
-                                y: {
-                                    ticks: {
-                                        color: '#9ca3af',
-                                        callback: function(value) {
-                                            return '$' + Math.round(value).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                const ctx = chartRef.current.getContext('2d');
+                let config = null;
+
+                switch(selectedChart) {
+                    case 'spending-category':
+                        if (dashboardData.spending_by_category && dashboardData.spending_by_category.length > 0) {
+                            config = {
+                                type: 'doughnut',
+                                data: {
+                                    labels: dashboardData.spending_by_category.map(c => c.name),
+                                    datasets: [{
+                                        data: dashboardData.spending_by_category.map(c => c.amount),
+                                        backgroundColor: dashboardData.spending_by_category.map(c => c.color),
+                                        borderWidth: 0
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    animation: {
+                                        animateRotate: true,
+                                        animateScale: true,
+                                        duration: 1000,
+                                        easing: 'easeInOutQuart'
+                                    },
+                                    plugins: {
+                                        legend: {
+                                            position: 'right',
+                                            labels: { color: '#e5e7eb', font: { size: 12 } }
+                                        },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: function(context) {
+                                                    return context.label + ': $' + context.parsed.toFixed(2);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                        break;
+
+                    case 'net-worth':
+                        if (dashboardData.net_worth_trend && dashboardData.net_worth_trend.length > 0) {
+                            config = {
+                                type: 'line',
+                                data: {
+                                    labels: dashboardData.net_worth_trend.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                                    datasets: [{
+                                        label: 'Net Worth',
+                                        data: dashboardData.net_worth_trend.map(d => Math.round(d.net_worth)),
+                                        borderColor: '#06b6d4',
+                                        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                        fill: true,
+                                        tension: 0.4
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    animation: getAnimationConfig(),
+                                    plugins: { legend: { display: false } },
+                                    scales: {
+                                        y: {
+                                            ticks: {
+                                                color: '#9ca3af',
+                                                callback: function(value) {
+                                                    return '$' + Math.round(value).toLocaleString('en-US');
+                                                }
+                                            },
+                                            grid: { color: '#374151' }
+                                        },
+                                        x: {
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                        break;
+
+                    case 'income-expenses':
+                        if (dashboardData.income_vs_expenses && dashboardData.income_vs_expenses.length > 0) {
+                            config = {
+                                type: 'bar',
+                                data: {
+                                    labels: dashboardData.income_vs_expenses.map(d => {
+                                        const date = new Date(d.month + '-01');
+                                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                                    }),
+                                    datasets: [
+                                        {
+                                            label: 'Income',
+                                            data: dashboardData.income_vs_expenses.map(d => d.income),
+                                            backgroundColor: '#10b981',
+                                            borderWidth: 0
+                                        },
+                                        {
+                                            label: 'Expenses',
+                                            data: dashboardData.income_vs_expenses.map(d => d.expenses),
+                                            backgroundColor: '#ef4444',
+                                            borderWidth: 0
+                                        }
+                                    ]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    animation: getAnimationConfig(),
+                                    plugins: {
+                                        legend: {
+                                            labels: { color: '#e5e7eb', font: { size: 12 } }
                                         }
                                     },
-                                    grid: { color: '#374151' }
-                                },
-                                x: {
-                                    ticks: { color: '#9ca3af' },
-                                    grid: { color: '#374151' }
+                                    scales: {
+                                        y: {
+                                            ticks: {
+                                                color: '#9ca3af',
+                                                callback: function(value) {
+                                                    return '$' + Math.round(value).toLocaleString('en-US');
+                                                }
+                                            },
+                                            grid: { color: '#374151' }
+                                        },
+                                        x: {
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { display: false }
+                                        }
+                                    }
                                 }
-                            }
+                            };
                         }
-                    });
+                        break;
+
+                    case 'expenses-over-time':
+                        if (dashboardData.expenses_over_time && dashboardData.expenses_over_time.length > 0) {
+                            // Group by month and category
+                            const months = [...new Set(dashboardData.expenses_over_time.map(d => d.month))];
+                            const categories = [...new Set(dashboardData.expenses_over_time.map(d => d.category))];
+                            const categoryData = {};
+
+                            categories.forEach(cat => {
+                                const catEntry = dashboardData.expenses_over_time.find(d => d.category === cat);
+                                categoryData[cat] = {
+                                    color: catEntry?.color || '#6366f1',
+                                    data: months.map(month => {
+                                        const entry = dashboardData.expenses_over_time.find(d => d.month === month && d.category === cat);
+                                        return entry ? parseFloat(entry.amount) : 0;
+                                    })
+                                };
+                            });
+
+                            config = {
+                                type: 'bar',
+                                data: {
+                                    labels: months.map(m => {
+                                        const date = new Date(m + '-01');
+                                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                                    }),
+                                    datasets: categories.map(cat => ({
+                                        label: cat,
+                                        data: categoryData[cat].data,
+                                        backgroundColor: categoryData[cat].color,
+                                        borderWidth: 0
+                                    }))
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    animation: getAnimationConfig(),
+                                    plugins: {
+                                        legend: {
+                                            labels: { color: '#e5e7eb', font: { size: 10 } }
+                                        }
+                                    },
+                                    scales: {
+                                        x: {
+                                            stacked: true,
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { display: false }
+                                        },
+                                        y: {
+                                            stacked: true,
+                                            ticks: {
+                                                color: '#9ca3af',
+                                                callback: function(value) {
+                                                    return '$' + Math.round(value).toLocaleString('en-US');
+                                                }
+                                            },
+                                            grid: { color: '#374151' }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                        break;
+
+                    case 'assets-liabilities':
+                        if (dashboardData.assets_vs_liabilities && dashboardData.assets_vs_liabilities.length > 0) {
+                            config = {
+                                type: 'line',
+                                data: {
+                                    labels: dashboardData.assets_vs_liabilities.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                                    datasets: [
+                                        {
+                                            label: 'Assets',
+                                            data: dashboardData.assets_vs_liabilities.map(d => d.assets),
+                                            borderColor: '#10b981',
+                                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                            fill: true,
+                                            tension: 0.4
+                                        },
+                                        {
+                                            label: 'Liabilities',
+                                            data: dashboardData.assets_vs_liabilities.map(d => d.liabilities),
+                                            borderColor: '#ef4444',
+                                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                            fill: true,
+                                            tension: 0.4
+                                        }
+                                    ]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    animation: getAnimationConfig(),
+                                    plugins: {
+                                        legend: {
+                                            labels: { color: '#e5e7eb', font: { size: 12 } }
+                                        }
+                                    },
+                                    scales: {
+                                        y: {
+                                            ticks: {
+                                                color: '#9ca3af',
+                                                callback: function(value) {
+                                                    return '$' + Math.round(value).toLocaleString('en-US');
+                                                }
+                                            },
+                                            grid: { color: '#374151' }
+                                        },
+                                        x: {
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                        break;
+
+                    case 'top-categories':
+                        if (dashboardData.top_categories && dashboardData.top_categories.length > 0) {
+                            config = {
+                                type: 'bar',
+                                data: {
+                                    labels: dashboardData.top_categories.map(c => c.name),
+                                    datasets: [{
+                                        label: 'Amount Spent',
+                                        data: dashboardData.top_categories.map(c => parseFloat(c.amount)),
+                                        backgroundColor: dashboardData.top_categories.map(c => c.color),
+                                        borderWidth: 0
+                                    }]
+                                },
+                                options: {
+                                    indexAxis: 'y',
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    animation: getAnimationConfig(),
+                                    plugins: {
+                                        legend: { display: false }
+                                    },
+                                    scales: {
+                                        x: {
+                                            ticks: {
+                                                color: '#9ca3af',
+                                                callback: function(value) {
+                                                    return '$' + Math.round(value).toLocaleString('en-US');
+                                                }
+                                            },
+                                            grid: { color: '#374151' }
+                                        },
+                                        y: {
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { display: false }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                        break;
+                }
+
+                if (config) {
+                    chartInstance.current = new Chart(ctx, config);
                 }
             };
 
@@ -1061,6 +1304,37 @@
             if (!dashboardData) {
                 return <div className="flex items-center justify-center h-64"><div className="text-gray-400">No dashboard data available</div></div>;
             }
+
+            const getChartTitle = () => {
+                const titles = {
+                    'spending-category': 'Spending by Category',
+                    'net-worth': 'Cash Balance Trend',
+                    'income-expenses': 'Income vs Expenses',
+                    'expenses-over-time': 'Expenses by Category Over Time',
+                    'assets-liabilities': 'Assets vs Liabilities',
+                    'top-categories': 'Top 5 Expense Categories'
+                };
+                return titles[selectedChart] || 'Chart';
+            };
+
+            const hasChartData = () => {
+                switch(selectedChart) {
+                    case 'spending-category':
+                        return dashboardData.spending_by_category && dashboardData.spending_by_category.length > 0;
+                    case 'net-worth':
+                        return dashboardData.net_worth_trend && dashboardData.net_worth_trend.length > 0;
+                    case 'income-expenses':
+                        return dashboardData.income_vs_expenses && dashboardData.income_vs_expenses.length > 0;
+                    case 'expenses-over-time':
+                        return dashboardData.expenses_over_time && dashboardData.expenses_over_time.length > 0;
+                    case 'assets-liabilities':
+                        return dashboardData.assets_vs_liabilities && dashboardData.assets_vs_liabilities.length > 0;
+                    case 'top-categories':
+                        return dashboardData.top_categories && dashboardData.top_categories.length > 0;
+                    default:
+                        return false;
+                }
+            };
 
             return (
                 <div className="space-y-6">
@@ -1107,29 +1381,53 @@
                         </div>
                     </div>
 
-                    {/* Charts */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Spending by Category Pie Chart */}
-                        <div className="bg-gray-800 rounded-lg p-6">
-                            <h3 className="text-lg font-semibold text-white mb-4">Spending by Category</h3>
-                            <div style={{height: '300px', display: (dashboardData.spending_by_category && dashboardData.spending_by_category.length > 0) ? 'block' : 'none'}}>
-                                <canvas ref={pieChartRef}></canvas>
+                    {/* Chart Selector and Visualization */}
+                    <div className="bg-gray-800 rounded-lg p-6">
+                        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                            <h3 className="text-lg font-semibold text-white">{getChartTitle()}</h3>
+                            <div className="flex items-center gap-2">
+                                <select
+                                    value={selectedChart}
+                                    onChange={(e) => setSelectedChart(e.target.value)}
+                                    className="bg-gray-700 text-white px-4 py-2 rounded text-sm"
+                                >
+                                    <option value="spending-category">📊 Spending by Category</option>
+                                    <option value="net-worth">📈 Cash Balance Trend</option>
+                                    <option value="income-expenses">💰 Income vs Expenses</option>
+                                    <option value="expenses-over-time">📊 Expenses Over Time</option>
+                                    <option value="assets-liabilities">📈 Assets vs Liabilities</option>
+                                    <option value="top-categories">🏆 Top 5 Categories</option>
+                                </select>
+                                {hasChartData() && (
+                                    <button
+                                        onClick={() => {
+                                            if (chartInstance.current) {
+                                                const link = document.createElement('a');
+                                                link.download = `${getChartTitle().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
+                                                link.href = chartInstance.current.toBase64Image();
+                                                link.click();
+                                                showToast('Chart exported successfully!', 'success');
+                                            }
+                                        }}
+                                        className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-2 rounded text-sm flex items-center gap-1"
+                                        title="Download chart as image"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        Export
+                                    </button>
+                                )}
                             </div>
-                            {(!dashboardData.spending_by_category || dashboardData.spending_by_category.length === 0) && (
-                                <div className="flex items-center justify-center h-64 text-gray-500">No categorized expenses in this period</div>
-                            )}
                         </div>
-
-                        {/* Net Worth Trend Line Chart */}
-                        <div className="bg-gray-800 rounded-lg p-6">
-                            <h3 className="text-lg font-semibold text-white mb-4">Cash Balance Trend</h3>
-                            <div style={{height: '300px', display: (dashboardData.net_worth_trend && dashboardData.net_worth_trend.length > 0) ? 'block' : 'none'}}>
-                                <canvas ref={lineChartRef}></canvas>
+                        <div style={{height: '400px', display: hasChartData() ? 'block' : 'none'}}>
+                            <canvas ref={chartRef}></canvas>
+                        </div>
+                        {!hasChartData() && (
+                            <div className="flex items-center justify-center h-96 text-gray-500">
+                                No data available for this chart in the selected period
                             </div>
-                            {(!dashboardData.net_worth_trend || dashboardData.net_worth_trend.length === 0) && (
-                                <div className="flex items-center justify-center h-64 text-gray-500">No trend data available</div>
-                            )}
-                        </div>
+                        )}
                     </div>
                 </div>
             );
@@ -2989,6 +3287,66 @@
                 }
             };
 
+            const exportToCSV = (data, filename) => {
+                const csv = data.map(row => row.join(',')).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                link.click();
+                window.URL.revokeObjectURL(url);
+                showToast(`${filename} downloaded successfully!`, 'success');
+            };
+
+            const exportIncomeStatement = () => {
+                if (!incomeData) return;
+                const rows = [
+                    ['Income Statement'],
+                    [`Period: ${startDate} to ${endDate}`],
+                    [''],
+                    ['Category', 'Amount'],
+                    ['Revenue', `$${incomeData.revenue.toFixed(2)}`],
+                    ['Expenses', `$${incomeData.expenses.toFixed(2)}`],
+                    ['Net Income', `$${incomeData.net_income.toFixed(2)}`]
+                ];
+                exportToCSV(rows, `Income_Statement_${startDate}_to_${endDate}.csv`);
+            };
+
+            const exportBalanceSheet = () => {
+                if (!balanceData) return;
+                const rows = [
+                    ['Balance Sheet'],
+                    [`As of: ${asOfDate}`],
+                    [''],
+                    ['Assets'],
+                    ...balanceData.assets.accounts.map(acc => [acc.name, `$${acc.balance.toFixed(2)}`]),
+                    ['Total Assets', `$${balanceData.assets.total.toFixed(2)}`],
+                    [''],
+                    ['Liabilities'],
+                    ...balanceData.liabilities.accounts.map(acc => [acc.name, `$${acc.balance.toFixed(2)}`]),
+                    ['Total Liabilities', `$${balanceData.liabilities.total.toFixed(2)}`],
+                    [''],
+                    ['Equity', `$${balanceData.equity.toFixed(2)}`]
+                ];
+                exportToCSV(rows, `Balance_Sheet_${asOfDate}.csv`);
+            };
+
+            const exportCashFlow = () => {
+                if (!cashFlowData) return;
+                const rows = [
+                    ['Cash Flow Statement'],
+                    [`Period: ${startDate} to ${endDate}`],
+                    [''],
+                    ['Category', 'Amount'],
+                    ['Operating Activities', `$${cashFlowData.operating.toFixed(2)}`],
+                    ['Investing Activities', `$${cashFlowData.investing.toFixed(2)}`],
+                    ['Financing Activities', `$${cashFlowData.financing.toFixed(2)}`],
+                    ['Net Change in Cash', `$${cashFlowData.net_change.toFixed(2)}`]
+                ];
+                exportToCSV(rows, `Cash_Flow_${startDate}_to_${endDate}.csv`);
+            };
+
             useEffect(() => {
                 if (activeReport === 'income' && startDate && endDate) {
                     loadIncomeStatement();
@@ -3005,7 +3363,23 @@
             return (
                 <div className="space-y-6">
                     <div className="bg-gray-800 shadow rounded-lg p-6">
-                        <h2 className="text-2xl font-bold text-white mb-6">Financial Statements</h2>
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-white">Financial Statements</h2>
+                            <button
+                                onClick={() => {
+                                    if (activeReport === 'income') exportIncomeStatement();
+                                    else if (activeReport === 'balance') exportBalanceSheet();
+                                    else if (activeReport === 'cashflow') exportCashFlow();
+                                }}
+                                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+                                disabled={!incomeData && !balanceData && !cashFlowData}
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Export CSV
+                            </button>
+                        </div>
 
                         <div className="flex space-x-4 mb-6">
                             <button onClick={() => setActiveReport('income')} className={reportButtonClasses('income')}>

@@ -2262,6 +2262,95 @@ class BusinessSimulator:
             total_expenses = float(totals['total_expenses'] or 0)
             savings_rate = ((total_income - total_expenses) / total_income * 100) if total_income > 0 else 0
 
+            # Get monthly income vs expenses for bar chart
+            cursor.execute("""
+                SELECT
+                    DATE_FORMAT(transaction_date, '%%Y-%%m') as month,
+                    SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as income,
+                    SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
+                FROM financial_ledger
+                WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
+                GROUP BY DATE_FORMAT(transaction_date, '%%Y-%%m')
+                ORDER BY month
+            """, (user_id, start_date, current_date))
+            monthly_data = cursor.fetchall()
+            income_vs_expenses = [
+                {
+                    'month': row['month'],
+                    'income': float(row['income'] or 0),
+                    'expenses': float(row['expenses'] or 0)
+                } for row in monthly_data
+            ]
+
+            # Get expenses by category over time (stacked bar)
+            cursor.execute("""
+                SELECT
+                    DATE_FORMAT(l.transaction_date, '%%Y-%%m') as month,
+                    c.name as category,
+                    c.color,
+                    SUM(l.debit) as amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                GROUP BY DATE_FORMAT(l.transaction_date, '%%Y-%%m'), c.category_id, c.name, c.color
+                ORDER BY month, amount DESC
+            """, (user_id, start_date, current_date))
+            expenses_over_time = cursor.fetchall()
+
+            # Get assets vs liabilities over time (area chart)
+            cursor.execute("""
+                SELECT DATE(transaction_date) as date,
+                    SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'INVESTMENT', 'FIXED_ASSET') THEN debit - credit ELSE 0 END) as asset_change,
+                    SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD') THEN credit - debit ELSE 0 END) as liability_change
+                FROM financial_ledger l
+                JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
+                WHERE l.user_id = %s AND transaction_date BETWEEN %s AND %s
+                GROUP BY DATE(transaction_date)
+                ORDER BY date
+            """, (user_id, start_date, current_date))
+            daily_balance_changes = cursor.fetchall()
+
+            # Calculate starting assets and liabilities
+            cursor.execute("""
+                SELECT
+                    SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'INVESTMENT', 'FIXED_ASSET') THEN debit - credit ELSE 0 END) as starting_assets,
+                    SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD') THEN credit - debit ELSE 0 END) as starting_liabilities
+                FROM financial_ledger l
+                JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
+                WHERE l.user_id = %s AND transaction_date < %s
+            """, (user_id, start_date))
+            starting = cursor.fetchone()
+            cumulative_assets = float(starting['starting_assets'] or 0) if starting else 0.0
+            cumulative_liabilities = float(starting['starting_liabilities'] or 0) if starting else 0.0
+
+            assets_vs_liabilities = []
+            for row in daily_balance_changes:
+                cumulative_assets += float(row['asset_change'] or 0)
+                cumulative_liabilities += float(row['liability_change'] or 0)
+                assets_vs_liabilities.append({
+                    'date': row['date'].strftime('%Y-%m-%d'),
+                    'assets': float(cumulative_assets),
+                    'liabilities': float(cumulative_liabilities)
+                })
+
+            # Get top 5 expense categories (horizontal bar)
+            cursor.execute("""
+                SELECT c.name, c.color, SUM(l.debit) as amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                GROUP BY c.category_id, c.name, c.color
+                ORDER BY amount DESC
+                LIMIT 5
+            """, (user_id, start_date, current_date))
+            top_categories = cursor.fetchall()
+
             return {
                 'total_income': total_income,
                 'total_expenses': total_expenses,
@@ -2269,6 +2358,10 @@ class BusinessSimulator:
                 'savings_rate': round(savings_rate, 1),
                 'spending_by_category': spending_by_category,
                 'net_worth_trend': net_worth_trend,
+                'income_vs_expenses': income_vs_expenses,
+                'expenses_over_time': expenses_over_time,
+                'assets_vs_liabilities': assets_vs_liabilities,
+                'top_categories': top_categories,
                 'period_days': days
             }
         finally:
