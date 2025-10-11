@@ -2282,6 +2282,30 @@ class BusinessSimulator:
                 } for row in monthly_data
             ]
 
+            # Get weekly income vs expenses for dashboard line chart
+            cursor.execute("""
+                SELECT
+                    MIN(transaction_date) as week_start,
+                    YEARWEEK(transaction_date, 1) as year_week,
+                    SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as income,
+                    SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
+                FROM financial_ledger
+                WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
+                GROUP BY YEARWEEK(transaction_date, 1)
+                ORDER BY year_week
+            """, (user_id, start_date, current_date))
+            weekly_data = cursor.fetchall()
+
+            # Format weekly data
+            weekly_income_expenses = []
+            for row in weekly_data:
+                weekly_income_expenses.append({
+                    'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
+                    'income': float(row['income'] or 0),
+                    'expenses': float(row['expenses'] or 0)
+                })
+
+
             # Get expenses by category over time (stacked bar)
             cursor.execute("""
                 SELECT
@@ -2299,6 +2323,35 @@ class BusinessSimulator:
                 ORDER BY month, amount DESC
             """, (user_id, start_date, current_date))
             expenses_over_time = cursor.fetchall()
+
+            # Get weekly expenses by category for trends chart
+            cursor.execute("""
+                SELECT
+                    MIN(l.transaction_date) as week_start,
+                    YEARWEEK(l.transaction_date, 1) as year_week,
+                    c.name as category,
+                    c.color,
+                    SUM(l.debit) as amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                GROUP BY YEARWEEK(l.transaction_date, 1), c.category_id, c.name, c.color
+                ORDER BY year_week, amount DESC
+            """, (user_id, start_date, current_date))
+            weekly_expenses_raw = cursor.fetchall()
+
+            # Format weekly expenses data
+            weekly_expenses_by_category = []
+            for row in weekly_expenses_raw:
+                weekly_expenses_by_category.append({
+                    'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
+                    'category': row['category'],
+                    'color': row['color'],
+                    'amount': float(row['amount'] or 0)
+                })
 
             # Get assets vs liabilities over time (area chart)
             cursor.execute("""
@@ -2359,7 +2412,9 @@ class BusinessSimulator:
                 'spending_by_category': spending_by_category,
                 'net_worth_trend': net_worth_trend,
                 'income_vs_expenses': income_vs_expenses,
+                'weekly_income_expenses': weekly_income_expenses,
                 'expenses_over_time': expenses_over_time,
+                'weekly_expenses_by_category': weekly_expenses_by_category,
                 'assets_vs_liabilities': assets_vs_liabilities,
                 'top_categories': top_categories,
                 'period_days': days

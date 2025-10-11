@@ -52,7 +52,11 @@ print("=" * 60)
 from dotenv import load_dotenv
 load_dotenv()
 
-from engine import BusinessSimulator
+# Import engine - handle both local dev and Railway deployment
+try:
+    from engine import BusinessSimulator
+except ModuleNotFoundError:
+    from src.engine import BusinessSimulator
 
 
 class CustomEncoder(json.JSONEncoder):
