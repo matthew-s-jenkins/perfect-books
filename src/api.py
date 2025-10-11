@@ -48,7 +48,11 @@ print(f"  DB_NAME: {os.getenv('DB_NAME')}")
 print(f"  DB_PASSWORD: {'***' if os.getenv('DB_PASSWORD') else 'NOT SET'}")
 print("=" * 60)
 
-from src.engine import BusinessSimulator
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+from engine import BusinessSimulator
 
 
 class CustomEncoder(json.JSONEncoder):
