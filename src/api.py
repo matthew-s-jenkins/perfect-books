@@ -37,6 +37,8 @@ from decimal import Decimal
 import datetime
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Debug: Print environment variables BEFORE importing engine
 print("=" * 60)
@@ -83,7 +85,7 @@ app = Flask(__name__, static_url_path='', static_folder='../')
 app.json_encoder = CustomEncoder
 
 # Security configuration
-app.config['SECRET_KEY'] = 'a_super_secret_key_you_should_change'  # TODO: Change in production
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SESSION_COOKIE_SAMESITE'] = "None"
 app.config['SESSION_COOKIE_SECURE'] = True
 
@@ -550,6 +552,7 @@ def manage_expense_category_api(category_id):
         data = request.get_json()
         name = data.get('name')
         color = data.get('color')
+        is_monthly = data.get('is_monthly', False)
 
         if not all([name, color]):
             return jsonify({"success": False, "message": "Name and color are required."}), 400
@@ -558,7 +561,8 @@ def manage_expense_category_api(category_id):
             user_id=current_user.id,
             category_id=category_id,
             name=name,
-            color=color
+            color=color,
+            is_monthly=is_monthly
         )
         if success:
             return jsonify({"success": True, "message": message})
