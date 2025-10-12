@@ -3559,9 +3559,9 @@
                     [`Period: ${startDate} to ${endDate}`],
                     [''],
                     ['Category', 'Amount'],
-                    ['Revenue', `$${incomeData.revenue.toFixed(2)}`],
-                    ['Expenses', `$${incomeData.expenses.toFixed(2)}`],
-                    ['Net Income', `$${incomeData.net_income.toFixed(2)}`]
+                    ['Revenue', `$${(incomeData.revenue?.total || 0).toFixed(2)}`],
+                    ['Expenses', `$${(incomeData.expenses?.total || 0).toFixed(2)}`],
+                    ['Net Income', `$${(incomeData.net_income || 0).toFixed(2)}`]
                 ];
                 exportToCSV(rows, `Income_Statement_${startDate}_to_${endDate}.csv`);
             };
