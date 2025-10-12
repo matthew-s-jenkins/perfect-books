@@ -1051,13 +1051,22 @@ def migrate_database():
                 ADD COLUMN account VARCHAR(100) NULL
             """)
 
-        # Make all new schema columns nullable for legacy code compatibility
+        # Make new schema columns nullable only if they exist (for legacy code compatibility)
         cursor.execute("""
-            ALTER TABLE financial_ledger
-            MODIFY COLUMN account_id INT NULL,
-            MODIFY COLUMN transaction_type ENUM('DEBIT', 'CREDIT') NULL,
-            MODIFY COLUMN amount DECIMAL(12,2) NULL
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'financial_ledger'
+            AND COLUMN_NAME = 'account_id'
         """)
+
+        if cursor.fetchone()[0] > 0:
+            cursor.execute("""
+                ALTER TABLE financial_ledger
+                MODIFY COLUMN account_id INT NULL,
+                MODIFY COLUMN transaction_type ENUM('DEBIT', 'CREDIT') NULL,
+                MODIFY COLUMN amount DECIMAL(12,2) NULL
+            """)
 
         # Add entry_id as alias for ledger_id (check if it exists first)
         cursor.execute("""
