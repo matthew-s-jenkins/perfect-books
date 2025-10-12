@@ -242,12 +242,15 @@
             const [newValue, setNewValue] = useState('');
             const [revalueDescription, setRevalueDescription] = useState('Asset Revaluation');
             const [payingLoan, setPayingLoan] = useState(null);
-            const [loanPaymentAmount, setLoanPaymentAmount] = useState('');
-            const [loanPaymentAmountDisplay, setLoanPaymentAmountDisplay] = useState('');
-            const [loanEscrowAmount, setLoanEscrowAmount] = useState('');
-            const [loanEscrowAmountDisplay, setLoanEscrowAmountDisplay] = useState('');
+            const [loanPaymentInterest, setLoanPaymentInterest] = useState('');
+            const [loanPaymentInterestDisplay, setLoanPaymentInterestDisplay] = useState('');
+            const [loanPaymentPrincipal, setLoanPaymentPrincipal] = useState('');
+            const [loanPaymentPrincipalDisplay, setLoanPaymentPrincipalDisplay] = useState('');
+            const [loanPaymentEscrow, setLoanPaymentEscrow] = useState('');
+            const [loanPaymentEscrowDisplay, setLoanPaymentEscrowDisplay] = useState('');
+            const [loanPaymentOther, setLoanPaymentOther] = useState([]);  // Array of {label, amount}
             const [loanPaymentAccount, setLoanPaymentAccount] = useState('');
-            const [loanInterestPreview, setLoanInterestPreview] = useState(null);
+            const [loanPaymentDate, setLoanPaymentDate] = useState('');
 
             const handleDelete = async (accountId, accountName) => {
                 if (!confirm(`Are you sure you want to delete "${accountName}"? This cannot be undone.`)) return;
@@ -294,27 +297,61 @@
                 }
             };
 
-            const calculateLoanPaymentPreview = (loan, paymentAmount) => {
-                if (!paymentAmount || paymentAmount <= 0) return null;
-                const monthlyRate = (loan.interest_rate / 100) / 12;
-                const interest = loan.balance * monthlyRate;
-                const principal = parseFloat(paymentAmount) - interest;
-                return {
-                    interest: formatMoney(interest),
-                    principal: formatMoney(principal),
-                    newBalance: formatMoney(loan.balance - principal)
-                };
+            const calculateTotalPayment = () => {
+                const interest = parseFloat(loanPaymentInterest) || 0;
+                const principal = parseFloat(loanPaymentPrincipal) || 0;
+                const escrow = parseFloat(loanPaymentEscrow) || 0;
+                const other = loanPaymentOther.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+                return interest + principal + escrow + other;
+            };
+
+            const addOtherPaymentField = () => {
+                setLoanPaymentOther([...loanPaymentOther, { label: '', amount: '', amountDisplay: '' }]);
+            };
+
+            const removeOtherPaymentField = (index) => {
+                setLoanPaymentOther(loanPaymentOther.filter((_, i) => i !== index));
+            };
+
+            const updateOtherPaymentField = (index, field, value) => {
+                const updated = [...loanPaymentOther];
+                updated[index][field] = value;
+                setLoanPaymentOther(updated);
             };
 
             const handleLoanPayment = async (loanId) => {
                 try {
+                    const interest = parseFloat(loanPaymentInterest) || 0;
+                    const principal = parseFloat(loanPaymentPrincipal) || 0;
+                    const escrow = parseFloat(loanPaymentEscrow) || 0;
+
+                    if (interest === 0 && principal === 0) {
+                        showToast('Please enter interest and/or principal amount', 'error');
+                        return;
+                    }
+
                     const payload = {
-                        payment_amount: parseFloat(loanPaymentAmount),
+                        interest_amount: interest,
+                        principal_amount: principal,
                         payment_account_id: parseInt(loanPaymentAccount)
                     };
 
-                    if (loanEscrowAmount && parseFloat(loanEscrowAmount) > 0) {
-                        payload.escrow_amount = parseFloat(loanEscrowAmount);
+                    if (escrow > 0) {
+                        payload.escrow_amount = escrow;
+                    }
+
+                    if (loanPaymentDate) {
+                        payload.payment_date = loanPaymentDate;
+                    }
+
+                    // Add other payment components
+                    if (loanPaymentOther.length > 0) {
+                        payload.other_amounts = loanPaymentOther
+                            .filter(item => item.label && parseFloat(item.amount) > 0)
+                            .map(item => ({
+                                label: item.label,
+                                amount: parseFloat(item.amount)
+                            }));
                     }
 
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/loans/${loanId}/payment`, {
@@ -326,12 +363,15 @@
                     if (result.success) {
                         showToast(result.message, 'success');
                         setPayingLoan(null);
-                        setLoanPaymentAmount('');
-                        setLoanPaymentAmountDisplay('');
-                        setLoanEscrowAmount('');
-                        setLoanEscrowAmountDisplay('');
+                        setLoanPaymentInterest('');
+                        setLoanPaymentInterestDisplay('');
+                        setLoanPaymentPrincipal('');
+                        setLoanPaymentPrincipalDisplay('');
+                        setLoanPaymentEscrow('');
+                        setLoanPaymentEscrowDisplay('');
+                        setLoanPaymentOther([]);
                         setLoanPaymentAccount('');
-                        setLoanInterestPreview(null);
+                        setLoanPaymentDate('');
                         onDataChange();
                     } else {
                         showToast(result.message, 'error');
@@ -380,15 +420,7 @@
                                             )}
                                             {account.type === 'LOAN' && account.balance < 0 && (
                                                 <button
-                                                    onClick={() => {
-                                                        setPayingLoan(account);
-                                                        setLoanPaymentAmount('');
-                                                        setLoanPaymentAmountDisplay('');
-                                                        setLoanEscrowAmount('');
-                                                        setLoanEscrowAmountDisplay('');
-                                                        setLoanPaymentAccount('');
-                                                        setLoanInterestPreview(null);
-                                                    }}
+                                                    onClick={() => setPayingLoan(account)}
                                                     className="text-green-400 hover:text-green-300 text-xs"
                                                     title="Make loan payment"
                                                 >
@@ -397,26 +429,11 @@
                                             )}
                                             {account.type === 'CREDIT_CARD' && account.balance < 0 && (
                                                 <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            const res = await fetchWithCredentials(`${API_BASE_URL}/api/accounts/${account.account_id}/calculate_interest`, {
-                                                                method: 'POST'
-                                                            });
-                                                            const result = await res.json();
-                                                            if (result.success) {
-                                                                showToast(result.message, 'success');
-                                                                onDataChange();
-                                                            } else {
-                                                                showToast(result.message, 'info');
-                                                            }
-                                                        } catch (err) {
-                                                            showToast('Error calculating interest: ' + err.message, 'error');
-                                                        }
-                                                    }}
-                                                    className="text-yellow-400 hover:text-yellow-300 text-xs"
-                                                    title="Calculate monthly interest charge"
+                                                    onClick={() => setPayingLoan(account)}
+                                                    className="text-green-400 hover:text-green-300 text-xs"
+                                                    title="Make credit card payment"
                                                 >
-                                                    Calculate Interest
+                                                    Make Payment
                                                 </button>
                                             )}
                                             <button
@@ -481,122 +498,204 @@
                                     {payingLoan && payingLoan.account_id === account.account_id && (
                                         <tr>
                                             <td colSpan="4" className="px-6 py-4 bg-gray-750">
-                                                <div className="space-y-3">
-                                                    <div className="grid grid-cols-4 gap-4">
+                                                <div className="space-y-4">
+                                                    <h3 className="text-white font-semibold text-sm">Make Payment - {payingLoan.name}</h3>
+
+                                                    {/* Payment breakdown grid */}
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                        {/* Interest */}
                                                         <div>
-                                                            <label className="block text-xs text-gray-400 mb-1">Payment Amount</label>
+                                                            <label className="block text-xs text-gray-400 mb-1">Interest</label>
                                                             <div className="relative">
-                                                                <span className="absolute left-2 top-2 text-gray-400">$</span>
+                                                                <span className="absolute left-2 top-2 text-gray-400 text-sm">$</span>
                                                                 <input
                                                                     type="text"
-                                                                    value={loanPaymentAmountDisplay}
+                                                                    value={loanPaymentInterestDisplay}
                                                                     onChange={(e) => {
                                                                         const raw = e.target.value.replace(/[$,]/g, '');
-                                                                        setLoanPaymentAmount(raw);
-
+                                                                        setLoanPaymentInterest(raw);
                                                                         if (!raw) {
-                                                                            setLoanPaymentAmountDisplay('');
+                                                                            setLoanPaymentInterestDisplay('');
                                                                         } else if (!isNaN(raw)) {
                                                                             const parts = raw.split('.');
                                                                             const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
                                                                             const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
-                                                                            setLoanPaymentAmountDisplay(wholePart + decimalPart);
-                                                                        } else {
-                                                                            setLoanPaymentAmountDisplay(raw);
+                                                                            setLoanPaymentInterestDisplay(wholePart + decimalPart);
                                                                         }
-                                                                        setLoanInterestPreview(calculateLoanPaymentPreview(payingLoan, raw));
                                                                     }}
-                                                                    className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono"
+                                                                    className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
                                                                     placeholder="0.00"
                                                                 />
                                                             </div>
                                                         </div>
+
+                                                        {/* Principal */}
                                                         <div>
-                                                            <label className="block text-xs text-gray-400 mb-1">Escrow Amount (Optional)</label>
+                                                            <label className="block text-xs text-gray-400 mb-1">Principal</label>
                                                             <div className="relative">
-                                                                <span className="absolute left-2 top-2 text-gray-400">$</span>
+                                                                <span className="absolute left-2 top-2 text-gray-400 text-sm">$</span>
                                                                 <input
                                                                     type="text"
-                                                                    value={loanEscrowAmountDisplay}
+                                                                    value={loanPaymentPrincipalDisplay}
                                                                     onChange={(e) => {
                                                                         const raw = e.target.value.replace(/[$,]/g, '');
-                                                                        setLoanEscrowAmount(raw);
-
+                                                                        setLoanPaymentPrincipal(raw);
                                                                         if (!raw) {
-                                                                            setLoanEscrowAmountDisplay('');
+                                                                            setLoanPaymentPrincipalDisplay('');
                                                                         } else if (!isNaN(raw)) {
                                                                             const parts = raw.split('.');
                                                                             const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
                                                                             const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
-                                                                            setLoanEscrowAmountDisplay(wholePart + decimalPart);
-                                                                        } else {
-                                                                            setLoanEscrowAmountDisplay(raw);
+                                                                            setLoanPaymentPrincipalDisplay(wholePart + decimalPart);
                                                                         }
                                                                     }}
-                                                                    className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono"
+                                                                    className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
                                                                     placeholder="0.00"
                                                                 />
                                                             </div>
                                                         </div>
+
+                                                        {/* Escrow (only for LOAN type, not CREDIT_CARD) */}
+                                                        {payingLoan.type === 'LOAN' && (
+                                                            <div>
+                                                                <label className="block text-xs text-gray-400 mb-1">Escrow</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2 top-2 text-gray-400 text-sm">$</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={loanPaymentEscrowDisplay}
+                                                                        onChange={(e) => {
+                                                                            const raw = e.target.value.replace(/[$,]/g, '');
+                                                                            setLoanPaymentEscrow(raw);
+                                                                            if (!raw) {
+                                                                                setLoanPaymentEscrowDisplay('');
+                                                                            } else if (!isNaN(raw)) {
+                                                                                const parts = raw.split('.');
+                                                                                const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
+                                                                                const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
+                                                                                setLoanPaymentEscrowDisplay(wholePart + decimalPart);
+                                                                            }
+                                                                        }}
+                                                                        className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
+                                                                        placeholder="0.00"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Payment Date */}
                                                         <div>
-                                                            <label className="block text-xs text-gray-400 mb-1">Pay From</label>
-                                                            <select
-                                                                value={loanPaymentAccount}
-                                                                onChange={(e) => setLoanPaymentAccount(e.target.value)}
-                                                                className="bg-gray-700 text-white p-2 rounded w-full"
-                                                            >
-                                                                <option value="">Select Account</option>
-                                                                {accounts.filter(a => ['CHECKING', 'SAVINGS'].includes(a.type)).map(a => (
-                                                                    <option key={a.account_id} value={a.account_id}>{a.name}</option>
-                                                                ))}
-                                                            </select>
+                                                            <label className="block text-xs text-gray-400 mb-1">Payment Date</label>
+                                                            <input
+                                                                type="date"
+                                                                value={loanPaymentDate}
+                                                                onChange={(e) => setLoanPaymentDate(e.target.value)}
+                                                                className="bg-gray-700 text-white p-2 rounded w-full text-sm"
+                                                            />
                                                         </div>
-                                                        <div className="flex items-end space-x-2">
+                                                    </div>
+
+                                                    {/* Other payment components */}
+                                                    {loanPaymentOther.map((item, index) => (
+                                                        <div key={index} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                                                            <div className="col-span-2">
+                                                                <label className="block text-xs text-gray-400 mb-1">Label</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={item.label}
+                                                                    onChange={(e) => updateOtherPaymentField(index, 'label', e.target.value)}
+                                                                    className="bg-gray-700 text-white p-2 rounded w-full text-sm"
+                                                                    placeholder="e.g., Late Fee, Cash Advance Interest"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs text-gray-400 mb-1">Amount</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2 top-2 text-gray-400 text-sm">$</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={item.amountDisplay}
+                                                                        onChange={(e) => {
+                                                                            const raw = e.target.value.replace(/[$,]/g, '');
+                                                                            updateOtherPaymentField(index, 'amount', raw);
+                                                                            if (!raw) {
+                                                                                updateOtherPaymentField(index, 'amountDisplay', '');
+                                                                            } else if (!isNaN(raw)) {
+                                                                                const parts = raw.split('.');
+                                                                                const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
+                                                                                const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
+                                                                                updateOtherPaymentField(index, 'amountDisplay', wholePart + decimalPart);
+                                                                            }
+                                                                        }}
+                                                                        className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
+                                                                        placeholder="0.00"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <button
+                                                                    onClick={() => removeOtherPaymentField(index)}
+                                                                    className="bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded text-xs w-full"
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+
+                                                    <button
+                                                        onClick={addOtherPaymentField}
+                                                        className="text-blue-400 hover:text-blue-300 text-xs"
+                                                    >
+                                                        + Add Other Amount (fees, cash advance interest, etc.)
+                                                    </button>
+
+                                                    {/* Total and actions */}
+                                                    <div className="flex items-center justify-between pt-3 border-t border-gray-600">
+                                                        <div className="text-white">
+                                                            <span className="text-gray-400 text-sm">Total Payment: </span>
+                                                            <span className="text-xl font-bold font-mono">${calculateTotalPayment().toFixed(2)}</span>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <div className="mr-4">
+                                                                <label className="block text-xs text-gray-400 mb-1">Pay From</label>
+                                                                <select
+                                                                    value={loanPaymentAccount}
+                                                                    onChange={(e) => setLoanPaymentAccount(e.target.value)}
+                                                                    className="bg-gray-700 text-white p-2 rounded text-sm"
+                                                                >
+                                                                    <option value="">Select Account</option>
+                                                                    {accounts.filter(a => ['CHECKING', 'SAVINGS'].includes(a.type)).map(a => (
+                                                                        <option key={a.account_id} value={a.account_id}>{a.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
                                                             <button
                                                                 onClick={() => handleLoanPayment(payingLoan.account_id)}
-                                                                disabled={!loanPaymentAmount || !loanPaymentAccount}
-                                                                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white px-4 py-2 rounded text-xs"
+                                                                disabled={(!loanPaymentInterest && !loanPaymentPrincipal) || !loanPaymentAccount}
+                                                                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white px-6 py-2 rounded text-sm"
                                                             >
                                                                 Submit Payment
                                                             </button>
                                                             <button
                                                                 onClick={() => {
                                                                     setPayingLoan(null);
-                                                                    setLoanPaymentAmount('');
-                                                                    setLoanPaymentAmountDisplay('');
-                                                                    setLoanEscrowAmount('');
-                                                                    setLoanEscrowAmountDisplay('');
+                                                                    setLoanPaymentInterest('');
+                                                                    setLoanPaymentInterestDisplay('');
+                                                                    setLoanPaymentPrincipal('');
+                                                                    setLoanPaymentPrincipalDisplay('');
+                                                                    setLoanPaymentEscrow('');
+                                                                    setLoanPaymentEscrowDisplay('');
+                                                                    setLoanPaymentOther([]);
                                                                     setLoanPaymentAccount('');
-                                                                    setLoanInterestPreview(null);
+                                                                    setLoanPaymentDate('');
                                                                 }}
-                                                                className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-xs"
+                                                                className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded text-sm"
                                                             >
                                                                 Cancel
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    {loanInterestPreview && (
-                                                        <div className="bg-gray-800 p-3 rounded text-xs">
-                                                            <div className="grid grid-cols-4 gap-2 text-gray-300">
-                                                                <div>
-                                                                    <span className="text-gray-500">Interest:</span>
-                                                                    <span className="ml-2 text-yellow-400 font-mono">${loanInterestPreview.interest}</span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="text-gray-500">Principal:</span>
-                                                                    <span className="ml-2 text-green-400 font-mono">${loanInterestPreview.principal}</span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="text-gray-500">New Balance:</span>
-                                                                    <span className="ml-2 text-cyan-400 font-mono">${loanInterestPreview.newBalance}</span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="text-gray-500">APR:</span>
-                                                                    <span className="ml-2 text-gray-400 font-mono">{payingLoan.interest_rate}%</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
