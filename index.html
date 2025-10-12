@@ -1635,9 +1635,8 @@
 
             const getChartTitle = () => ({
                 'income-expenses': 'Weekly Income vs Spending',
-                'spending-trends': 'Spending Trends by Category',
+                'spending-trends': 'Spending Trends by Category (Monthly expenses shown as weekly avg)',
                 'net-worth': 'Cash Balance Trend',
-                'expenses-over-time': 'Spending by Category (Stacked)',
                 'assets-liabilities': 'Assets vs Liabilities',
                 'top-categories': 'Top 5 Expense Categories'
             })[selectedChart] || 'Chart';
@@ -1646,7 +1645,6 @@
                 if (selectedChart === 'income-expenses') return dashboardData.weekly_income_expenses?.length > 0;
                 if (selectedChart === 'spending-trends') return dashboardData.weekly_expenses_by_category?.length > 0;
                 if (selectedChart === 'net-worth') return dashboardData.net_worth_trend?.length > 0;
-                if (selectedChart === 'expenses-over-time') return dashboardData.expenses_over_time?.length > 0;
                 if (selectedChart === 'assets-liabilities') return dashboardData.assets_vs_liabilities?.length > 0;
                 if (selectedChart === 'top-categories') return dashboardData.top_categories?.length > 0;
                 return false;
@@ -1660,7 +1658,6 @@
                             <option value="income-expenses">💰 Income vs Spending</option>
                             <option value="spending-trends">📊 Spending Trends by Category</option>
                             <option value="net-worth">📈 Cash Balance Trend</option>
-                            <option value="expenses-over-time">📊 Spending by Category (Stacked)</option>
                             <option value="assets-liabilities">📈 Assets vs Liabilities</option>
                             <option value="top-categories">🏆 Top 5 Categories</option>
                         </select>
@@ -1860,8 +1857,43 @@
                                                                 </div>
                                                             </div>
                                                             <span className="text-white font-medium">{cat.name}</span>
+                                                            {categories.find(c => c.category_id === cat.category_id)?.is_monthly && (
+                                                                <span className="ml-2 text-xs bg-purple-600 text-white px-2 py-0.5 rounded">Monthly</span>
+                                                            )}
                                                         </div>
-                                                        <span className="text-cyan-400 font-bold">${parseFloat(cat.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                                        <div className="flex items-center space-x-4">
+                                                            <label className="flex items-center space-x-2 cursor-pointer" title="Check if this is a monthly recurring expense (like rent)">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={categories.find(c => c.category_id === cat.category_id)?.is_monthly || false}
+                                                                    onChange={async (e) => {
+                                                                        const category = categories.find(c => c.category_id === cat.category_id);
+                                                                        try {
+                                                                            const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories/${cat.category_id}`, {
+                                                                                method: 'PUT',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({
+                                                                                    name: category.name,
+                                                                                    color: category.color,
+                                                                                    is_monthly: e.target.checked
+                                                                                })
+                                                                            });
+                                                                            if (response.ok) {
+                                                                                showToast(e.target.checked ? 'Set as monthly expense' : 'Set as variable expense', 'success');
+                                                                                onDataChange();
+                                                                                loadAnalysis();
+                                                                                loadDashboardData();
+                                                                            }
+                                                                        } catch (err) {
+                                                                            showToast('Error updating category', 'error');
+                                                                        }
+                                                                    }}
+                                                                    className="w-4 h-4 text-purple-600 bg-gray-600 border-gray-500 rounded focus:ring-purple-500"
+                                                                />
+                                                                <span className="text-xs text-gray-400">Monthly</span>
+                                                            </label>
+                                                            <span className="text-cyan-400 font-bold">${parseFloat(cat.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                                        </div>
                                                     </div>
                                                     <div className="flex items-center justify-between text-sm">
                                                         <div className="flex-1 bg-gray-600 rounded-full h-2 mr-3">

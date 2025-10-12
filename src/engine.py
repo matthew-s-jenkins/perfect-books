@@ -109,7 +109,14 @@ class BusinessSimulator:
         Note:
             Callers are responsible for closing the connection and cursor.
         """
-        conn = mysql.connector.connect(**DB_CONFIG)
+        # Explicitly specify only the parameters we want (Python 3.13 compatibility)
+        conn = mysql.connector.connect(
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password'],
+            host=DB_CONFIG['host'],
+            port=DB_CONFIG['port'],
+            database=DB_CONFIG['database']
+        )
         return conn, conn.cursor(dictionary=True, buffered=True)
 
     def _get_user_current_date(self, cursor, user_id):
@@ -416,7 +423,7 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                "SELECT category_id, name, color, is_default FROM expense_categories WHERE user_id = %s ORDER BY is_default DESC, name ASC",
+                "SELECT category_id, name, color, is_default, is_monthly FROM expense_categories WHERE user_id = %s ORDER BY is_default DESC, name ASC",
                 (user_id,)
             )
             return cursor.fetchall()
@@ -457,7 +464,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_expense_category(self, user_id, category_id, name, color):
+    def update_expense_category(self, user_id, category_id, name, color, is_monthly=False):
         """Update an expense category."""
         conn, cursor = self._get_db_connection()
         try:
@@ -470,8 +477,8 @@ class BusinessSimulator:
                 return False, "Category not found or you don't have permission to edit it."
 
             cursor.execute(
-                "UPDATE expense_categories SET name = %s, color = %s WHERE category_id = %s",
-                (name, color, category_id)
+                "UPDATE expense_categories SET name = %s, color = %s, is_monthly = %s WHERE category_id = %s",
+                (name, color, is_monthly, category_id)
             )
             conn.commit()
             return True, "Category updated successfully."
@@ -2303,6 +2310,40 @@ class BusinessSimulator:
                     'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
                     'income': float(row['income'] or 0),
                     'expenses': float(row['expenses'] or 0)
+                })
+
+            # Get weekly expenses by category - monthly categories show as weekly average
+            cursor.execute("""
+                SELECT
+                    MIN(l.transaction_date) as week_start,
+                    YEARWEEK(l.transaction_date, 1) as year_week,
+                    c.name as category,
+                    c.color,
+                    c.is_monthly,
+                    SUM(l.debit) as amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                GROUP BY YEARWEEK(l.transaction_date, 1), c.category_id, c.name, c.color, c.is_monthly
+                ORDER BY year_week, amount DESC
+            """, (user_id, start_date, current_date))
+            weekly_expenses_raw = cursor.fetchall()
+
+            # Format weekly expenses - divide monthly expenses by 4.33 for weekly average
+            weekly_expenses_by_category = []
+            for row in weekly_expenses_raw:
+                amount = float(row['amount'] or 0)
+                if row.get('is_monthly'):
+                    amount = amount / 4.33
+                weekly_expenses_by_category.append({
+                    'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
+                    'category': row['category'],
+                    'color': row['color'],
+                    'is_monthly': bool(row.get('is_monthly')),
+                    'amount': round(amount, 2)
                 })
 
 
