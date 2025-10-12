@@ -85,7 +85,7 @@ app = Flask(__name__, static_url_path='', static_folder='../')
 app.json_encoder = CustomEncoder
 
 # Security configuration
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SESSION_COOKIE_SAMESITE'] = "None"
 app.config['SESSION_COOKIE_SECURE'] = True
 
@@ -1144,6 +1144,21 @@ def migrate_database():
             cursor.execute("""
                 ALTER TABLE recurring_income
                 ADD COLUMN description VARCHAR(255) NULL
+            """)
+
+        # Add is_monthly column to expense_categories if missing
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'railway'
+            AND TABLE_NAME = 'expense_categories'
+            AND COLUMN_NAME = 'is_monthly'
+        """)
+
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE expense_categories
+                ADD COLUMN is_monthly BOOLEAN DEFAULT FALSE AFTER color
             """)
 
         conn.commit()
