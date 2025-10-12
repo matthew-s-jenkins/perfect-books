@@ -582,7 +582,7 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
-                GROUP BY c.category_id, c.name, c.color
+                GROUP BY c.category_id, c.name, c.color, c.is_monthly
                 ORDER BY total_amount DESC
             """
             cursor.execute(query, (user_id, start_date, end_date))
