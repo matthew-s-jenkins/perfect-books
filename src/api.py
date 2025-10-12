@@ -802,24 +802,39 @@ def reject_pending_transaction_api(pending_id):
 @check_sim
 @login_required
 def make_loan_payment_api(loan_id):
-    """Make a loan payment with principal/interest split and optional escrow."""
+    """Make a loan/credit card payment with manual interest/principal breakdown."""
     data = request.get_json()
-    payment_amount = data.get('payment_amount')
+    interest_amount = data.get('interest_amount', 0)
+    principal_amount = data.get('principal_amount', 0)
     payment_account_id = data.get('payment_account_id')
     payment_date = data.get('payment_date')
-    escrow_amount = data.get('escrow_amount')
+    escrow_amount = data.get('escrow_amount', 0)
+    other_amounts = data.get('other_amounts', [])  # List of {label, amount}
 
-    if not all([payment_amount, payment_account_id]):
-        return jsonify({"success": False, "message": "Missing required fields: payment_amount and payment_account_id."}), 400
+    # Debug logging
+    print(f"[PAYMENT DEBUG] Loan ID: {loan_id}")
+    print(f"[PAYMENT DEBUG] Interest: {interest_amount}, Principal: {principal_amount}, Escrow: {escrow_amount}")
+    print(f"[PAYMENT DEBUG] Other amounts: {other_amounts}")
+    print(f"[PAYMENT DEBUG] Payment account: {payment_account_id}, Date: {payment_date}")
+
+    if not payment_account_id:
+        return jsonify({"success": False, "message": "Payment account is required."}), 400
+
+    if not interest_amount and not principal_amount:
+        return jsonify({"success": False, "message": "Please enter interest and/or principal amount."}), 400
 
     success, message = sim.make_loan_payment(
         user_id=current_user.id,
         loan_id=loan_id,
-        payment_amount=payment_amount,
+        interest_amount=interest_amount,
+        principal_amount=principal_amount,
         payment_account_id=payment_account_id,
         payment_date=payment_date,
-        escrow_amount=escrow_amount
+        escrow_amount=escrow_amount,
+        other_amounts=other_amounts
     )
+
+    print(f"[PAYMENT DEBUG] Result: success={success}, message={message}")
 
     return jsonify({"success": success, "message": message}), 200 if success else 400
 

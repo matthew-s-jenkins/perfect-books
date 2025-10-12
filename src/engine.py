@@ -1594,117 +1594,182 @@ class BusinessSimulator:
     # LOAN PAYMENT METHODS (Principal vs Interest Split)
     # =============================================================================
 
-    def make_loan_payment(self, user_id, loan_id, payment_amount, payment_account_id, payment_date=None, escrow_amount=None):
+    def make_loan_payment(self, user_id, loan_id, interest_amount, principal_amount, payment_account_id,
+                          payment_date=None, escrow_amount=None, other_amounts=None):
         """
-        Make a loan payment with proper principal/interest split and optional escrow.
+        Make a loan/credit card payment with manual interest/principal breakdown.
 
         Args:
             user_id (int): The user ID
-            loan_id (int): The loan's ACCOUNT ID from the 'accounts' table.
-            payment_amount (Decimal): Total payment amount
+            loan_id (int): The loan's ACCOUNT ID from the 'accounts' table (LOAN or CREDIT_CARD type)
+            interest_amount (Decimal): Interest portion
+            principal_amount (Decimal): Principal portion
             payment_account_id (int): Account to pay from
-            payment_date (date, optional): Payment date (defaults to today)
-            escrow_amount (Decimal, optional): Escrow amount to track separately
+            payment_date (date, optional): Payment date (defaults to user's current date)
+            escrow_amount (Decimal, optional): Escrow amount (for mortgages)
+            other_amounts (list, optional): List of dicts with 'label' and 'amount' for fees, etc.
 
         Returns:
             tuple: (success bool, message str)
         """
+        interest_amount = Decimal(interest_amount) if interest_amount else Decimal('0')
+        principal_amount = Decimal(principal_amount) if principal_amount else Decimal('0')
         escrow_amount = Decimal(escrow_amount) if escrow_amount else Decimal('0')
+
         conn, cursor = self._get_db_connection()
         try:
             if payment_date is None:
                 payment_date = self._get_user_current_date(cursor, user_id)
 
-            # Get loan account details directly from accounts table
+            # Get loan/credit card account details
             cursor.execute("""
-                SELECT account_id, name, balance
+                SELECT account_id, name, balance, type
                 FROM accounts
-                WHERE account_id = %s AND user_id = %s AND type = 'LOAN'
+                WHERE account_id = %s AND user_id = %s AND type IN ('LOAN', 'CREDIT_CARD')
             """, (loan_id, user_id))
 
             loan_account = cursor.fetchone()
             if not loan_account:
-                return False, "Loan not found."
+                return False, "Loan or credit card account not found."
 
-            # Calculate interest for this period based on the current balance (which is negative)
-            # Using default 5% APR for now since accounts table doesn't have interest_rate column
-            current_outstanding_balance = abs(Decimal(loan_account['balance']))
-            default_apr = Decimal('5.0')  # 5% APR
-            monthly_rate = default_apr / Decimal(100) / Decimal(12)
-            interest_amount = current_outstanding_balance * monthly_rate
-            interest_amount = interest_amount.quantize(Decimal('0.01'))
-
-            # Calculate principal
-            payment_amount = Decimal(payment_amount)
-            principal_amount = payment_amount - interest_amount
-
-            if principal_amount < 0:
-                return False, f"Payment doesn't cover interest. Minimum payment: ${interest_amount:.2f}"
+            # Get payment account name
+            cursor.execute("SELECT name FROM accounts WHERE account_id = %s", (payment_account_id,))
+            payment_acct = cursor.fetchone()
+            if not payment_acct:
+                return False, "Payment account not found."
 
             # Generate UUID for transaction
             from uuid import uuid4
             txn_uuid = str(uuid4())
 
-            # Create ledger entries...
-            # 1. DR Loan (reduces liability)
+            # Get Interest Expense category (create if doesn't exist)
             cursor.execute("""
-                INSERT INTO financial_ledger
-                (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                VALUES (%s, %s, %s, %s, 'Loan Payment - Principal', %s, 0, NULL)
-            """, (user_id, txn_uuid, payment_date, loan_account['name'], principal_amount))
+                SELECT category_id FROM expense_categories
+                WHERE user_id = %s AND name = 'Interest Expense'
+            """, (user_id,))
+            interest_cat = cursor.fetchone()
+            if not interest_cat:
+                cursor.execute("""
+                    INSERT INTO expense_categories (user_id, name, color, is_default, is_monthly)
+                    VALUES (%s, 'Interest Expense', '#ef4444', FALSE, TRUE)
+                """, (user_id,))
+                interest_category_id = cursor.lastrowid
+            else:
+                interest_category_id = interest_cat['category_id']
 
-            # 2. DR Interest Expense
-            cursor.execute("""
-                INSERT INTO financial_ledger
-                (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                VALUES (%s, %s, %s, 'Interest Expense', 'Loan Payment - Interest', %s, 0, NULL)
-            """, (user_id, txn_uuid, payment_date, interest_amount))
+            # Calculate total payment
+            total_payment = interest_amount + principal_amount + escrow_amount
+            if other_amounts:
+                for item in other_amounts:
+                    total_payment += Decimal(item['amount'])
 
-            # 3. Handle escrow if provided
-            total_cash_outflow = payment_amount + escrow_amount
-
-            if escrow_amount > 0:
-                # DR Escrow Account (asset)
+            # Create ledger entries
+            # 1. DR Interest Expense (categorized for charts)
+            if interest_amount > 0:
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, 'Escrow', 'Loan Payment - Escrow', %s, 0, NULL)
-                """, (user_id, txn_uuid, payment_date, escrow_amount))
+                    VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
+                """, (user_id, txn_uuid, payment_date, f"{loan_account['name']} - Interest",
+                      interest_amount, interest_category_id))
 
-            # 4. CR Payment Account (total cash out)
-            cursor.execute("SELECT name FROM accounts WHERE account_id = %s", (payment_account_id,))
-            payment_acct = cursor.fetchone()
+            # 2. DR Loan/Credit Card (reduces liability) - principal only
+            if principal_amount > 0:
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, %s, 'Payment - Principal', %s, 0, NULL)
+                """, (user_id, txn_uuid, payment_date, loan_account['name'], principal_amount))
+
+            # 3. Handle escrow as categorized expense
+            if escrow_amount > 0:
+                # Get or create Escrow/Housing category
+                cursor.execute("""
+                    SELECT category_id FROM expense_categories
+                    WHERE user_id = %s AND name = 'Escrow/Housing'
+                """, (user_id,))
+                escrow_cat = cursor.fetchone()
+                if not escrow_cat:
+                    cursor.execute("""
+                        INSERT INTO expense_categories (user_id, name, color, is_default, is_monthly)
+                        VALUES (%s, 'Escrow/Housing', '#3b82f6', FALSE, TRUE)
+                    """, (user_id,))
+                    escrow_category_id = cursor.lastrowid
+                else:
+                    escrow_category_id = escrow_cat['category_id']
+
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
+                """, (user_id, txn_uuid, payment_date, f"{loan_account['name']} - Escrow",
+                      escrow_amount, escrow_category_id))
+
+            # 4. Handle other amounts (fees, cash advance interest, etc.) as categorized expenses
+            if other_amounts:
+                # Get or create Fees category
+                cursor.execute("""
+                    SELECT category_id FROM expense_categories
+                    WHERE user_id = %s AND name = 'Fees & Charges'
+                """, (user_id,))
+                fees_cat = cursor.fetchone()
+                if not fees_cat:
+                    cursor.execute("""
+                        INSERT INTO expense_categories (user_id, name, color, is_default, is_monthly)
+                        VALUES (%s, 'Fees & Charges', '#f59e0b', FALSE, TRUE)
+                    """, (user_id,))
+                    fees_category_id = cursor.lastrowid
+                else:
+                    fees_category_id = fees_cat['category_id']
+
+                for item in other_amounts:
+                    amount = Decimal(item['amount'])
+                    if amount > 0:
+                        cursor.execute("""
+                            INSERT INTO financial_ledger
+                            (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                            VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
+                        """, (user_id, txn_uuid, payment_date, f"{loan_account['name']} - {item['label']}",
+                              amount, fees_category_id))
+
+            # 5. CR Payment Account (total cash out)
             cursor.execute("""
                 INSERT INTO financial_ledger
                 (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                VALUES (%s, %s, %s, %s, 'Loan Payment', 0, %s, NULL)
-            """, (user_id, txn_uuid, payment_date, payment_acct['name'], total_cash_outflow))
+                VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+            """, (user_id, txn_uuid, payment_date, payment_acct['name'],
+                  f"{loan_account['name']} Payment", total_payment))
 
-            # Update account balances directly for efficiency
-            cursor.execute("UPDATE accounts SET balance = balance + %s WHERE account_id = %s", (principal_amount, loan_id))
-            cursor.execute("UPDATE accounts SET balance = balance - %s WHERE account_id = %s", (total_cash_outflow, payment_account_id))
+            # Update account balances
+            # Principal reduces the loan/credit card balance (increases it since it's negative)
+            if principal_amount > 0:
+                cursor.execute("UPDATE accounts SET balance = balance + %s WHERE account_id = %s",
+                              (principal_amount, loan_id))
 
-            # Update escrow account balance if escrow payment made
-            if escrow_amount > 0:
-                cursor.execute("""
-                    UPDATE accounts
-                    SET balance = balance + %s
-                    WHERE user_id = %s AND name = 'Escrow' AND type = 'CHECKING'
-                """, (escrow_amount, user_id))
+            # Total payment reduces cash account
+            cursor.execute("UPDATE accounts SET balance = balance - %s WHERE account_id = %s",
+                          (total_payment, payment_account_id))
 
             # Fetch new loan balance
             cursor.execute("SELECT balance FROM accounts WHERE account_id = %s", (loan_id,))
             new_balance = abs(cursor.fetchone()['balance'])
 
-            # Note: Not updating loans/loan_payments tables since they may not exist
-            # All transaction history is tracked in the financial_ledger table
-
             conn.commit()
 
-            msg = f"Payment processed: ${principal_amount:,.2f} principal, ${interest_amount:,.2f} interest"
+            # Build success message
+            msg_parts = []
+            if principal_amount > 0:
+                msg_parts.append(f"${principal_amount:,.2f} principal")
+            if interest_amount > 0:
+                msg_parts.append(f"${interest_amount:,.2f} interest")
             if escrow_amount > 0:
-                msg += f", ${escrow_amount:,.2f} escrow"
-            msg += f". New loan balance: ${new_balance:,.2f}"
+                msg_parts.append(f"${escrow_amount:,.2f} escrow")
+            if other_amounts:
+                for item in other_amounts:
+                    if Decimal(item['amount']) > 0:
+                        msg_parts.append(f"${Decimal(item['amount']):,.2f} {item['label']}")
+
+            msg = f"Payment processed: {', '.join(msg_parts)}. New balance: ${new_balance:,.2f}"
             return True, msg
 
         except Exception as e:
