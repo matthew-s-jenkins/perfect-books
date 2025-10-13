@@ -1814,6 +1814,7 @@
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_analysis?start_date=${startDate}&end_date=${endDate}`);
                     if (!response.ok) throw new Error('Failed to fetch analysis data');
                     const data = await response.json();
+                    console.log('Analysis data received:', JSON.stringify(data, null, 2));
                     setAnalysisData(data);
                     const total = data.reduce((sum, cat) => sum + parseFloat(cat.total_amount || 0), 0);
                     setTotalExpenses(total);
