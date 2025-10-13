@@ -1590,7 +1590,7 @@
                     }
                 } else if (selectedChart === 'spending-trends' && dashboardData.weekly_expenses_by_category?.length > 0) {
                     // Multi-line chart showing spending by each category over time (weekly)
-                    const weeks = [...new Set(dashboardData.weekly_expenses_by_category.map(d => d.week_start))];
+                    const weeks = [...new Set(dashboardData.weekly_expenses_by_category.map(d => d.week_start))].sort();
                     const categories = [...new Set(dashboardData.weekly_expenses_by_category.map(d => d.category))];
 
                     chartInstance.current = new Chart(ctx, {
@@ -1649,7 +1649,7 @@
                     });
                 } else if (selectedChart === 'expenses-over-time' && dashboardData.expenses_over_time?.length > 0) {
                     // Stacked bar chart by category over time
-                    const months = [...new Set(dashboardData.expenses_over_time.map(d => d.month))];
+                    const months = [...new Set(dashboardData.expenses_over_time.map(d => d.month))].sort();
                     const categories = [...new Set(dashboardData.expenses_over_time.map(d => d.category))];
                     const categoryData = {};
 
