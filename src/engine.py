@@ -582,15 +582,11 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
-                GROUP BY c.category_id, c.name, c.color, c.is_monthly
+                GROUP BY c.category_id, c.name, c.color
                 ORDER BY total_amount DESC
             """
             cursor.execute(query, (user_id, start_date, end_date))
-            results = cursor.fetchall()
-            # Remove is_monthly from results to prevent it showing in UI
-            for row in results:
-                row.pop('is_monthly', None)
-            return results
+            return cursor.fetchall()
         finally:
             cursor.close()
             conn.close()
@@ -2297,13 +2293,10 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
-                GROUP BY c.category_id, c.name, c.color, c.is_monthly
+                GROUP BY c.category_id, c.name, c.color
                 ORDER BY amount DESC
             """, (user_id, start_date, current_date))
             spending_by_category = cursor.fetchall()
-            # Remove is_monthly from results
-            for row in spending_by_category:
-                row.pop('is_monthly', None)
 
             # Get net worth over time (daily snapshots)
             cursor.execute("""
@@ -2511,14 +2504,11 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
-                GROUP BY c.category_id, c.name, c.color, c.is_monthly
+                GROUP BY c.category_id, c.name, c.color
                 ORDER BY amount DESC
                 LIMIT 5
             """, (user_id, start_date, current_date))
             top_categories = cursor.fetchall()
-            # Remove is_monthly from results
-            for row in top_categories:
-                row.pop('is_monthly', None)
 
             return {
                 'total_income': total_income,
