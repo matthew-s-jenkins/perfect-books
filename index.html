@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans">
     <div id="root"></div>
@@ -1596,15 +1597,14 @@
                     chartInstance.current = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: weeks.map(w => {
-                                const date = new Date(w);
-                                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                            }),
                             datasets: categories.map(cat => {
                                 const catEntry = dashboardData.weekly_expenses_by_category.find(d => d.category === cat);
                                 const data = weeks.map(week => {
                                     const entry = dashboardData.weekly_expenses_by_category.find(d => d.week_start === week && d.category === cat);
-                                    return entry ? parseFloat(entry.amount) : 0;
+                                    return {
+                                        x: new Date(week),
+                                        y: entry ? parseFloat(entry.amount) : 0
+                                    };
                                 });
                                 return {
                                     label: cat,
@@ -1625,7 +1625,15 @@
                             plugins: { legend: { labels: { color: '#e5e7eb', font: { size: 10 } } } },
                             scales: {
                                 y: { ticks: { color: '#9ca3af', callback: (v) => '$' + Math.round(v).toLocaleString('en-US') }, grid: { color: '#374151' } },
-                                x: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'day',
+                                        displayFormats: { day: 'MMM d' }
+                                    },
+                                    ticks: { color: '#9ca3af' },
+                                    grid: { color: '#374151' }
+                                }
                             }
                         }
                     });
