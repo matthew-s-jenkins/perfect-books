@@ -2009,7 +2009,7 @@
                                                                 </div>
                                                             </div>
                                                             <span className="text-white font-medium">{cat.name}</span>
-                                                            {categories.find(c => c.category_id === cat.category_id)?.is_monthly && (
+                                                            {Boolean(categories.find(c => c.category_id === cat.category_id)?.is_monthly) && (
                                                                 <span className="ml-2 text-xs bg-purple-600 text-white px-2 py-0.5 rounded">Monthly</span>
                                                             )}
                                                         </div>
