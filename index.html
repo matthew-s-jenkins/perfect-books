@@ -1628,8 +1628,8 @@
                                 x: {
                                     type: 'time',
                                     time: {
-                                        unit: 'day',
-                                        displayFormats: { day: 'MMM d' }
+                                        unit: 'week',
+                                        displayFormats: { week: 'MMM d' }
                                     },
                                     ticks: { color: '#9ca3af' },
                                     grid: { color: '#374151' }
@@ -1641,8 +1641,17 @@
                     chartInstance.current = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: dashboardData.net_worth_trend.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
-                            datasets: [{ label: 'Net Worth', data: dashboardData.net_worth_trend.map(d => Math.round(d.net_worth)), borderColor: '#06b6d4', backgroundColor: 'rgba(6, 182, 212, 0.1)', fill: true, tension: 0.4 }]
+                            datasets: [{
+                                label: 'Net Worth',
+                                data: dashboardData.net_worth_trend.map(d => ({
+                                    x: new Date(d.date),
+                                    y: Math.round(d.net_worth)
+                                })),
+                                borderColor: '#06b6d4',
+                                backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
                         },
                         options: {
                             responsive: true,
@@ -1651,7 +1660,15 @@
                             plugins: { legend: { display: false } },
                             scales: {
                                 y: { ticks: { color: '#9ca3af', callback: (v) => '$' + Math.round(v).toLocaleString('en-US') }, grid: { color: '#374151' } },
-                                x: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'day',
+                                        displayFormats: { day: 'MMM d' }
+                                    },
+                                    ticks: { color: '#9ca3af' },
+                                    grid: { color: '#374151' }
+                                }
                             }
                         }
                     });
@@ -1701,10 +1718,29 @@
                     chartInstance.current = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: dashboardData.assets_vs_liabilities.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
                             datasets: [
-                                { label: 'Assets', data: dashboardData.assets_vs_liabilities.map(d => d.assets), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 },
-                                { label: 'Liabilities', data: dashboardData.assets_vs_liabilities.map(d => d.liabilities), borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.4 }
+                                {
+                                    label: 'Assets',
+                                    data: dashboardData.assets_vs_liabilities.map(d => ({
+                                        x: new Date(d.date),
+                                        y: d.assets
+                                    })),
+                                    borderColor: '#10b981',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    fill: true,
+                                    tension: 0.4
+                                },
+                                {
+                                    label: 'Liabilities',
+                                    data: dashboardData.assets_vs_liabilities.map(d => ({
+                                        x: new Date(d.date),
+                                        y: d.liabilities
+                                    })),
+                                    borderColor: '#ef4444',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    fill: true,
+                                    tension: 0.4
+                                }
                             ]
                         },
                         options: {
@@ -1714,7 +1750,15 @@
                             plugins: { legend: { labels: { color: '#e5e7eb', font: { size: 12 } } } },
                             scales: {
                                 y: { ticks: { color: '#9ca3af', callback: (v) => '$' + Math.round(v).toLocaleString('en-US') }, grid: { color: '#374151' } },
-                                x: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'day',
+                                        displayFormats: { day: 'MMM d' }
+                                    },
+                                    ticks: { color: '#9ca3af' },
+                                    grid: { color: '#374151' }
+                                }
                             }
                         }
                     });
