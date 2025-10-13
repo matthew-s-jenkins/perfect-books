@@ -2301,6 +2301,9 @@ class BusinessSimulator:
                 ORDER BY amount DESC
             """, (user_id, start_date, current_date))
             spending_by_category = cursor.fetchall()
+            # Remove is_monthly from results
+            for row in spending_by_category:
+                row.pop('is_monthly', None)
 
             # Get net worth over time (daily snapshots)
             cursor.execute("""
