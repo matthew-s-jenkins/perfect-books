@@ -613,6 +613,44 @@ def get_expense_trends_api():
     except Exception as e:
         return jsonify({"error": f"An error occurred: {e}"}), 500
 
+
+@app.route('/api/debug/weekly_expenses', methods=['GET'])
+def debug_weekly_expenses_api():
+    """Temporary debug endpoint to return weekly_expenses_by_category from dashboard payload.
+    Allows unauthenticated access when FLASK_DEBUG=1 and the request is from localhost.
+    """
+    # Allow unauthenticated access only in debug mode from localhost
+    if not (os.getenv('FLASK_DEBUG') == '1' and request.remote_addr in ('127.0.0.1', '::1')):
+        # If not allowed, require normal authentication
+        try:
+            # Attempt to use session-based current_user if available
+            if not current_user.is_authenticated:
+                return jsonify({"error": "Debug endpoint unavailable."}), 403
+        except Exception:
+            return jsonify({"error": "Debug endpoint unavailable."}), 403
+
+    try:
+        days = request.args.get('days', default=30, type=int)
+        # If unauthenticated debug access, we need a user context; default to first user in DB if necessary
+        user_id = None
+        try:
+            user_id = current_user.id
+        except Exception:
+            # Fallback: try to infer a user (only for local debug)
+            conn, cursor = sim._get_db_connection()
+            cursor.execute("SELECT user_id FROM users LIMIT 1")
+            r = cursor.fetchone()
+            cursor.close(); conn.close()
+            user_id = r['user_id'] if r else None
+
+        if not user_id:
+            return jsonify({"error": "No user context available for debug."}), 500
+
+        dashboard = sim.get_dashboard_data(user_id=user_id, days=days)
+        return jsonify({ 'weekly_expenses_by_category': dashboard.get('weekly_expenses_by_category', []) })
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {e}"}), 500
+
 @app.route('/api/expense/category', methods=['PUT'])
 @check_sim
 @login_required
