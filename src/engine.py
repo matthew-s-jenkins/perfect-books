@@ -2397,19 +2397,82 @@ class BusinessSimulator:
             """, (user_id, start_date, current_date))
             weekly_expenses_raw = cursor.fetchall()
 
-            # Format weekly expenses - divide monthly expenses by 4.33 for weekly average
-            weekly_expenses_by_category = []
+            # Build a complete weekly series and smooth monthly categories across all weeks
+            # 1) Collect all ISO weeks in range (week starts Monday)
+            def week_monday(d):
+                return d - datetime.timedelta(days=d.weekday())
+
+            weeks = []
+            w = week_monday(start_date)
+            last = week_monday(current_date)
+            while w <= last:
+                weeks.append(w)
+                w = w + datetime.timedelta(days=7)
+
+            # 2) Map raw weekly sums for non-monthly categories
+            non_monthly_map = {}
             for row in weekly_expenses_raw:
-                amount = float(row['amount'] or 0)
-                if row.get('is_monthly'):
-                    amount = amount / 4.33
-                weekly_expenses_by_category.append({
-                    'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
-                    'category': row['category'],
+                if not row.get('is_monthly'):
+                    raw_ws = row['week_start'].date() if hasattr(row['week_start'], 'date') else row['week_start']
+                    # Normalize to Monday of that week for consistent x-axis
+                    ws = week_monday(raw_ws)
+                    key = (ws, row['category'])
+                    non_monthly_map[key] = {
+                        'week_start': ws.strftime('%Y-%m-%d'),
+                        'category': row['category'],
+                        'color': row['color'],
+                        'is_monthly': False,
+                        'amount': round(float(row['amount'] or 0), 2)
+                    }
+
+            # 3) Compute monthly totals for monthly categories
+            cursor.execute("""
+                SELECT
+                    DATE_FORMAT(l.transaction_date, '%%Y-%%m') as ym,
+                    c.name as category,
+                    c.color,
+                    SUM(l.debit) as monthly_amount
+                FROM financial_ledger l
+                LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                WHERE l.user_id = %s
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.category_id IS NOT NULL
+                    AND c.is_monthly = 1
+                GROUP BY ym, c.category_id, c.name, c.color
+            """, (user_id, start_date, current_date))
+            monthly_totals = cursor.fetchall()
+
+            monthly_map = {}  # (ym, category) -> {color, monthly_amount}
+            monthly_categories = set()
+            for row in monthly_totals:
+                ym = row['ym']
+                cat = row['category']
+                monthly_map[(ym, cat)] = {
                     'color': row['color'],
-                    'is_monthly': bool(row.get('is_monthly')),
-                    'amount': round(amount, 2)
-                })
+                    'monthly_amount': float(row['monthly_amount'] or 0)
+                }
+                monthly_categories.add(cat)
+
+            # 4) Fill every week for monthly categories with monthly_avg = monthly_amount / 4.33
+            final_map = { **non_monthly_map }
+            for ws in weeks:
+                ym = ws.strftime('%Y-%m')
+                for cat in monthly_categories:
+                    info = monthly_map.get((ym, cat))
+                    monthly_amount = info['monthly_amount'] if info else 0.0
+                    weekly_amount = monthly_amount / 4.33 if monthly_amount > 0 else 0.0
+                    key = (ws, cat)
+                    final_map[key] = {
+                        'week_start': ws.strftime('%Y-%m-%d'),
+                        'category': cat,
+                        'color': (info['color'] if info else '#6366f1'),
+                        'is_monthly': True,
+                        'amount': round(weekly_amount, 2)
+                    }
+
+            # 5) Emit flattened list sorted by week then category
+            weekly_expenses_by_category = [v for _, v in sorted(final_map.items(), key=lambda x: (x[0][0], x[0][1]))]
 
 
             # Get expenses by category over time (stacked bar)

@@ -83,6 +83,7 @@ TABLES['expense_categories'] = (
     "  `name` VARCHAR(100) NOT NULL,"
     "  `color` VARCHAR(7) DEFAULT '#6366f1',"
     "  `is_default` BOOLEAN DEFAULT FALSE,"
+    "  `is_monthly` BOOLEAN DEFAULT FALSE,"
     "  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
     "  INDEX `idx_user_id` (`user_id`),"
     "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,"

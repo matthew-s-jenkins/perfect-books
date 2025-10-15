@@ -1044,6 +1044,13 @@
             const chartRef = React.useRef(null);
             const chartInstance = React.useRef(null);
 
+            // Listen for external refresh events so other components can trigger reloads
+            useEffect(() => {
+                const handler = () => { loadDashboard(); };
+                window.addEventListener('dashboard:refresh', handler);
+                return () => window.removeEventListener('dashboard:refresh', handler);
+            }, [dateRange]);
+
             useEffect(() => {
                 loadDashboard();
             }, [dateRange]);
@@ -2033,6 +2040,8 @@
                                                                             if (response.ok) {
                                                                                 showToast(e.target.checked ? 'Set as monthly expense' : 'Set as variable expense', 'success');
                                                                                 onDataChange();
+                                                                                // Notify dashboard to refresh so charts reflect updated category settings
+                                                                                try { window.dispatchEvent(new Event('dashboard:refresh')); } catch (e) { /* ignore */ }
                                                                             }
                                                                         } catch (err) {
                                                                             showToast('Error updating category', 'error');
