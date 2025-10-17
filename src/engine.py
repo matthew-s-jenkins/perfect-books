@@ -315,27 +315,98 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def get_ledger_entries(self, user_id, transaction_limit=20):
+    def get_ledger_entries(self, user_id, transaction_limit=20, account_filter=None):
+        """
+        Get ledger entries for a user, optionally filtered to a specific account.
+
+        Args:
+            user_id: The user ID
+            transaction_limit: Maximum number of transactions to return
+            account_filter: Optional account name to filter by. If provided, only shows
+                          transactions that involve this account.
+
+        Returns:
+            List of ledger entries with running balance if filtered to one account
+        """
         conn, cursor = self._get_db_connection()
         try:
-            query = (
-                "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit, "
-                "l.category_id, c.name as category_name, c.color as category_color "
-                "FROM financial_ledger l "
-                "LEFT JOIN expense_categories c ON l.category_id = c.category_id "
-                "JOIN ( "
-                "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
-                "    FROM financial_ledger "
-                "    WHERE user_id = %s AND description != 'Time Advanced' "
-                "    GROUP BY transaction_uuid "
-                "    ORDER BY max_date DESC, max_id DESC "
-                "    LIMIT %s "
-                ") AS recent_t "
-                "ON l.transaction_uuid = recent_t.transaction_uuid "
-                "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
-            )
-            cursor.execute(query, (user_id, transaction_limit, user_id))
-            return cursor.fetchall()
+            if account_filter:
+                # When filtering by account, get all entries for transactions involving that account
+                query = (
+                    "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit, "
+                    "l.category_id, c.name as category_name, c.color as category_color "
+                    "FROM financial_ledger l "
+                    "LEFT JOIN expense_categories c ON l.category_id = c.category_id "
+                    "JOIN ( "
+                    "    SELECT DISTINCT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
+                    "    FROM financial_ledger "
+                    "    WHERE user_id = %s AND description != 'Time Advanced' "
+                    "      AND transaction_uuid IN ( "
+                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = %s AND account = %s "
+                    "      ) "
+                    "    GROUP BY transaction_uuid "
+                    "    ORDER BY max_date DESC, max_id DESC "
+                    "    LIMIT %s "
+                    ") AS recent_t "
+                    "ON l.transaction_uuid = recent_t.transaction_uuid "
+                    "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
+                )
+                cursor.execute(query, (user_id, user_id, account_filter, transaction_limit, user_id))
+            else:
+                # Original query - no filter
+                query = (
+                    "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit, "
+                    "l.category_id, c.name as category_name, c.color as category_color "
+                    "FROM financial_ledger l "
+                    "LEFT JOIN expense_categories c ON l.category_id = c.category_id "
+                    "JOIN ( "
+                    "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
+                    "    FROM financial_ledger "
+                    "    WHERE user_id = %s AND description != 'Time Advanced' "
+                    "    GROUP BY transaction_uuid "
+                    "    ORDER BY max_date DESC, max_id DESC "
+                    "    LIMIT %s "
+                    ") AS recent_t "
+                    "ON l.transaction_uuid = recent_t.transaction_uuid "
+                    "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
+                )
+                cursor.execute(query, (user_id, transaction_limit, user_id))
+
+            entries = cursor.fetchall()
+
+            # If filtering by account, calculate running balance
+            if account_filter and entries:
+                # Get initial balance for the account (sum of all transactions before the oldest one shown)
+                oldest_date = min(e['transaction_date'] for e in entries)
+                cursor.execute(
+                    "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance "
+                    "FROM financial_ledger "
+                    "WHERE user_id = %s AND account = %s AND transaction_date < %s",
+                    (user_id, account_filter, oldest_date)
+                )
+                initial_balance = float(cursor.fetchone()['balance'] or 0)
+
+                # Sort entries by date ascending for balance calculation
+                sorted_entries = sorted(entries, key=lambda x: (x['transaction_date'], x['entry_id']))
+
+                running_balance = initial_balance
+                balance_map = {}  # Map entry_id to running balance
+
+                for entry in sorted_entries:
+                    if entry['account'] == account_filter:
+                        # This account is involved in this entry
+                        if entry['debit'] and entry['debit'] > 0:
+                            running_balance += float(entry['debit'])
+                        if entry['credit'] and entry['credit'] > 0:
+                            running_balance -= float(entry['credit'])
+
+                    balance_map[entry['entry_id']] = running_balance
+
+                # Add running balance to each entry
+                for entry in entries:
+                    entry['running_balance'] = balance_map.get(entry['entry_id'])
+
+            return entries
         finally:
             cursor.close()
             conn.close()
