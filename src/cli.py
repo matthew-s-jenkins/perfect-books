@@ -372,11 +372,13 @@ def main():
     if setup_needed:
         run_setup_wizard()
     else:
-        try:
-            sim_for_startup = BusinessSimulator()
-            sim_for_startup.auto_advance_time()
-        except Exception as e:
-            print(f"Error during time advance: {e}")
+        # Note: CLI doesn't support multi-user yet, so auto-advance is disabled
+        # Auto-advance is available in the web interface (index.html) after login
+        # try:
+        #     sim_for_startup = BusinessSimulator()
+        #     sim_for_startup.auto_advance_time(user_id=1)  # Would need user_id
+        # except Exception as e:
+        #     print(f"Error during time advance: {e}")
         run_main_menu()
 
 if __name__ == "__main__":
