@@ -188,6 +188,17 @@ def login_user_api():
     if user_data:
         user = User(id=str(user_data['user_id']), username=user_data['username'])
         login_user(user)
+
+        # Auto-advance time to today's date if needed
+        try:
+            print(f"[LOGIN] Calling auto_advance_time for user {user.id}")
+            result = sim.auto_advance_time(int(user.id))
+            print(f"[LOGIN] Auto-advance result: {result}")
+        except Exception as e:
+            print(f"[LOGIN] Auto-advance failed for user {user.id}: {e}")
+            import traceback
+            traceback.print_exc()
+
         has_accounts = sim.check_user_has_accounts(user.id)
         return jsonify({"success": True, "message": message, "setup_needed": not has_accounts})
     else:

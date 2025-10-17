@@ -2071,6 +2071,40 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
+    def auto_advance_time(self, user_id):
+        """
+        Automatically advance time to today's date if the user's last transaction
+        is in the past. This is called on login to keep the simulation current.
+
+        Args:
+            user_id (int): The ID of the user
+
+        Returns:
+            dict: Result with log messages from the advance
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get the user's current date (last transaction date)
+            current_date = self._get_user_current_date(cursor, user_id)
+            cursor.close()
+            conn.close()
+
+            # Get today's actual date
+            today = datetime.datetime.now().date()
+
+            # Calculate days difference
+            if current_date < today:
+                days_to_advance = (today - current_date).days
+                print(f"[AUTO-ADVANCE] User {user_id}: Advancing {days_to_advance} day(s) from {current_date} to {today}")
+                return self.advance_time(user_id, days_to_advance)
+            else:
+                print(f"[AUTO-ADVANCE] User {user_id}: Already at current date ({current_date})")
+                return {'log': [f"Already at current date: {current_date}"]}
+
+        except Exception as e:
+            print(f"[AUTO-ADVANCE ERROR] User {user_id}: {e}")
+            return {'log': [f"Auto-advance failed: {e}"]}
+
     # =============================================================================
     # FINANCIAL STATEMENTS
     # =============================================================================
