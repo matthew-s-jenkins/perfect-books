@@ -482,7 +482,8 @@ def get_status():
 @check_sim
 @login_required
 def get_ledger():
-    return jsonify(sim.get_ledger_entries(user_id=current_user.id))
+    account_filter = request.args.get('account')  # Optional query parameter
+    return jsonify(sim.get_ledger_entries(user_id=current_user.id, account_filter=account_filter))
 
 @app.route('/api/descriptions/income', methods=['GET'])
 @check_sim

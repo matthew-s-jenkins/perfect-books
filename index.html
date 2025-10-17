@@ -709,22 +709,59 @@
             );
         }
 
-        function LedgerView({ ledger, accounts, categories, onDataChange, showToast }) {
+        function LedgerView({ ledger, accounts, categories, onDataChange, showToast, accountFilter, setAccountFilter }) {
             const [editingCategory, setEditingCategory] = useState(null);
             const [selectedCategoryId, setSelectedCategoryId] = useState('');
             const [searchQuery, setSearchQuery] = useState('');
             const [editingColorCategoryId, setEditingColorCategoryId] = useState(null);
             const [editingColorValue, setEditingColorValue] = useState('');
+            // accountFilter and setAccountFilter now come from props (parent App component)
+            const [filteredLedgerData, setFilteredLedgerData] = useState(ledger);  // Ledger data (potentially filtered)
+            const [isLoadingFilter, setIsLoadingFilter] = useState(false);
 
             const accountTypeMap = new Map();
             accounts.forEach(acc => {
                 accountTypeMap.set(acc.name, acc.type);
             });
 
+            // Fetch filtered ledger when account filter changes
+            useEffect(() => {
+                const fetchFilteredLedger = async () => {
+                    if (accountFilter === null) {
+                        setFilteredLedgerData(ledger);
+                        return;
+                    }
+
+                    setIsLoadingFilter(true);
+                    try {
+                        const url = accountFilter
+                            ? `${API_BASE_URL}/api/ledger?account=${encodeURIComponent(accountFilter)}`
+                            : `${API_BASE_URL}/api/ledger`;
+                        const response = await fetchWithCredentials(url);
+                        const data = await response.json();
+                        setFilteredLedgerData(data);
+                    } catch (err) {
+                        showToast('Error loading filtered ledger', 'error');
+                        setFilteredLedgerData(ledger);
+                    } finally {
+                        setIsLoadingFilter(false);
+                    }
+                };
+
+                fetchFilteredLedger();
+            }, [accountFilter]);
+
+            // Reset to unfiltered ledger when prop changes
+            useEffect(() => {
+                if (accountFilter === null) {
+                    setFilteredLedgerData(ledger);
+                }
+            }, [ledger]);
+
             const exportToCSV = () => {
                 // Create CSV content
                 const headers = ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Category'];
-                const rows = filteredLedger.map(entry => [
+                const rows = searchFilteredLedger.map(entry => [
                     entry.transaction_date,
                     entry.account,
                     entry.description.replace(/"/g, '""'), // Escape quotes
@@ -819,16 +856,16 @@
             };
 
             // Filter ledger entries based on search query
-            const filteredLedger = searchQuery
-                ? ledger.filter(entry =>
+            const searchFilteredLedger = searchQuery
+                ? filteredLedgerData.filter(entry =>
                     entry.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     entry.account?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     entry.debit?.toString().includes(searchQuery) ||
                     entry.credit?.toString().includes(searchQuery)
                   )
-                : ledger;
+                : filteredLedgerData;
 
-            const groupedTransactions = filteredLedger.reduce((acc, entry) => {
+            const groupedTransactions = searchFilteredLedger.reduce((acc, entry) => {
                 const uuid = entry.transaction_uuid || `${entry.transaction_date}_${entry.description}`;
                 if (!acc[uuid]) {
                     acc[uuid] = { uuid: uuid, date: entry.transaction_date, entries: [], description: entry.description };
@@ -863,6 +900,45 @@
                 <div className="bg-gray-800 shadow rounded-lg p-4 mt-6">
                     <div className="mb-4">
                         <h2 className="text-xl font-bold text-white mb-3">Transaction History</h2>
+
+                        {/* Account Filter Buttons */}
+                        <div className="mb-3">
+                            <div className="text-xs text-gray-400 mb-2 uppercase font-medium">Filter by Account:</div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setAccountFilter(null)}
+                                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                                        accountFilter === null
+                                            ? 'bg-cyan-600 text-white'
+                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    All Accounts
+                                </button>
+                                {accounts
+                                    .filter(acc => acc.type !== 'SYSTEM')
+                                    .map(acc => (
+                                        <button
+                                            key={acc.account_id}
+                                            onClick={() => setAccountFilter(acc.name)}
+                                            className={`px-3 py-1 rounded text-sm transition-colors ${
+                                                accountFilter === acc.name
+                                                    ? 'bg-cyan-600 text-white'
+                                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                            }`}
+                                        >
+                                            {acc.name}
+                                        </button>
+                                    ))}
+                            </div>
+                            {accountFilter && (
+                                <div className="mt-2 text-xs text-gray-400">
+                                    Showing transactions involving <span className="text-cyan-400 font-medium">{accountFilter}</span>
+                                    {isLoadingFilter && <span className="ml-2">Loading...</span>}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                             <button
                                 onClick={exportToCSV}
@@ -894,18 +970,27 @@
                         <div className="w-20">Date</div>
                         <div className="flex-1">Transaction</div>
                         <div className="w-32 text-right">Amount</div>
-                        <div className="w-24 text-center">Assets</div>
-                        <div className="w-8 text-center">=</div>
-                        <div className="w-24 text-center">Liabilities</div>
-                        <div className="w-8 text-center">+</div>
-                        <div className="w-24 text-center">Equity</div>
+                        {accountFilter ? (
+                            <div className="w-32 text-right">Balance</div>
+                        ) : (
+                            <>
+                                <div className="w-24 text-center">Assets</div>
+                                <div className="w-8 text-center">=</div>
+                                <div className="w-24 text-center">Liabilities</div>
+                                <div className="w-8 text-center">+</div>
+                                <div className="w-24 text-center">Equity</div>
+                            </>
+                        )}
                     </div>
                     <div className="space-y-2">
                         {transactions.map((transaction, idx) => {
                             if (transaction.entries.length === 1 && transaction.entries[0].account === 'System') return null;
-                            
+
                             const debits = transaction.entries.filter(e => e.debit > 0).map(e => getAccountDisplay(e.account, parseFloat(e.debit), true));
                             const credits = transaction.entries.filter(e => e.credit > 0).map(e => getAccountDisplay(e.account, parseFloat(e.credit), false));
+
+                            // Get running balance for filtered account (from any entry in this transaction)
+                            const runningBalance = accountFilter ? transaction.entries.find(e => e.running_balance !== undefined)?.running_balance : null;
 
                             if (transaction.description === 'Initial Balance' && debits.length > 0) {
                                 return debits.map((debit, debitIdx) => {
@@ -936,7 +1021,16 @@
                                         <div key={`${idx}-${debitIdx}`} className="flex items-center bg-gray-700 rounded-lg p-2 md:p-3 hover:bg-gray-650 transition-colors text-sm">
                                             <div className="w-16 md:w-20 text-gray-400 text-xs md:text-sm">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-white text-xs md:text-sm truncate">{transaction.description}</p>
+                                                <div className="flex items-center justify-between">
+                                                    <p className="font-medium text-white text-xs md:text-sm truncate flex-1">{transaction.description}</p>
+                                                    <button
+                                                        onClick={() => handleReverse(transaction.uuid, transaction.description)}
+                                                        className="text-red-400 hover:text-red-300 text-xs ml-2 px-2 py-1 hover:bg-gray-600 rounded transition-colors"
+                                                        title="Reverse this transaction"
+                                                    >
+                                                        ✕ Reverse
+                                                    </button>
+                                                </div>
                                                 <div className="flex items-center text-xs text-gray-300">
                                                     <span className="truncate">{credit ? credit.account : 'Equity'}</span>
                                                     <svg className="w-3 h-3 md:w-4 md:h-4 text-gray-500 mx-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
@@ -944,11 +1038,19 @@
                                                 </div>
                                             </div>
                                             <div className="w-20 md:w-32 text-right font-mono text-cyan-400 text-xs md:text-sm ml-2">{singleAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
-                                            <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
-                                            <div className="w-8 text-center text-gray-600 hidden md:block">=</div>
-                                            <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
-                                            <div className="w-8 text-center text-gray-600 hidden md:block">+</div>
-                                            <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
+                                            {accountFilter ? (
+                                                <div className="w-32 text-right text-xs font-mono text-yellow-400 hidden md:block">
+                                                    {runningBalance !== null ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
+                                                    <div className="w-8 text-center text-gray-600 hidden md:block">=</div>
+                                                    <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
+                                                    <div className="w-8 text-center text-gray-600 hidden md:block">+</div>
+                                                    <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
+                                                </>
+                                            )}
                                         </div>
                                     );
                                 });
@@ -974,7 +1076,16 @@
                                     <div className="flex items-center">
                                         <div className="w-16 md:w-20 text-gray-400 text-xs md:text-sm">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-white text-xs md:text-sm truncate">{transaction.description}</p>
+                                            <div className="flex items-center justify-between">
+                                                <p className="font-medium text-white text-xs md:text-sm truncate flex-1">{transaction.description}</p>
+                                                <button
+                                                    onClick={() => handleReverse(transaction.uuid, transaction.description)}
+                                                    className="text-red-400 hover:text-red-300 text-xs ml-2 px-2 py-1 hover:bg-gray-600 rounded transition-colors"
+                                                    title="Reverse this transaction"
+                                                >
+                                                    ✕ Reverse
+                                                </button>
+                                            </div>
                                             <div className="flex items-center text-xs text-gray-300">
                                                 <span className="truncate">{credits.map(c => c.account).join(', ')}</span>
                                                 <svg className="w-3 h-3 md:w-4 md:h-4 text-gray-500 mx-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
@@ -982,11 +1093,19 @@
                                             </div>
                                         </div>
                                         <div className="w-20 md:w-32 text-right font-mono text-cyan-400 text-xs md:text-sm ml-2">{transactionAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
-                                        <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
-                                        <div className="w-8 text-center text-gray-600 hidden md:block">=</div>
-                                        <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
-                                        <div className="w-8 text-center text-gray-600 hidden md:block">+</div>
-                                        <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
+                                        {accountFilter ? (
+                                            <div className="w-32 text-right text-xs font-mono text-yellow-400 hidden md:block">
+                                                {runningBalance !== null && runningBalance !== undefined ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
+                                                <div className="w-8 text-center text-gray-600 hidden md:block">=</div>
+                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
+                                                <div className="w-8 text-center text-gray-600 hidden md:block">+</div>
+                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
+                                            </>
+                                        )}
                                     </div>
                                     {isExpense && (
                                         <div className="mt-2 ml-0 md:ml-20 flex items-center">
@@ -3888,6 +4007,7 @@
             const [meterData, setMeterData] = useState(null);
             const [averageData, setAverageData] = useState(null);
             const [status, setStatus] = useState(null);
+            const [ledgerAccountFilter, setLedgerAccountFilter] = useState(null);  // Persist ledger filter
             const [toast, setToast] = useState(null);
             const [showPendingModal, setShowPendingModal] = useState(false);
             const [pendingCount, setPendingCount] = useState(0);
@@ -4023,7 +4143,7 @@
                                 </div>
                                 {activePage === 'dashboard' && <DashboardPage showToast={showToast} status={status} setActivePage={setActivePage} />}
                                 {activePage === 'accounts' && <AccountsList accounts={accounts} onDataChange={refreshData} showToast={showToast} />}
-                                {activePage === 'ledger' && <LedgerView ledger={ledger} accounts={accounts} categories={expenseCategories} onDataChange={refreshData} showToast={showToast} />}
+                                {activePage === 'ledger' && <LedgerView ledger={ledger} accounts={accounts} categories={expenseCategories} onDataChange={refreshData} showToast={showToast} accountFilter={ledgerAccountFilter} setAccountFilter={setLedgerAccountFilter} />}
                                 {activePage === 'recurring' && (
                                     <>
                                         <RecurringIncomePage accounts={accounts} onDataChange={refreshData} />
