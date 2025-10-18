@@ -67,13 +67,19 @@ class CustomEncoder(json.JSONEncoder):
 
     Converts:
     - Decimal to float for JSON serialization
-    - datetime/date to ISO 8601 format strings
+    - datetime to ISO 8601 format with time (e.g., "2025-10-18T12:00:00")
+    - date to ISO 8601 format with noon time to avoid timezone issues
     """
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
-        if isinstance(obj, (datetime.datetime, datetime.date)):
+        if isinstance(obj, datetime.datetime):
+            # datetime objects already have time, return as-is
             return obj.isoformat()
+        if isinstance(obj, datetime.date):
+            # date objects need time appended to avoid UTC interpretation
+            # Use noon (12:00:00) to avoid any midnight boundary issues
+            return obj.isoformat() + 'T12:00:00'
         return super().default(obj)
 
 
@@ -82,7 +88,21 @@ class CustomEncoder(json.JSONEncoder):
 # =============================================================================
 
 app = Flask(__name__, static_url_path='', static_folder='../')
-app.json_encoder = CustomEncoder
+
+# Configure Flask 3.0+ JSON encoder using the json provider interface
+from flask.json.provider import DefaultJSONProvider
+class CustomJSONProvider(DefaultJSONProvider):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        if isinstance(obj, datetime.date):
+            # Append time to avoid UTC interpretation issues
+            return obj.isoformat() + 'T12:00:00'
+        return super().default(obj)
+
+app.json = CustomJSONProvider(app)
 
 # Security configuration
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -477,6 +497,20 @@ def manage_recurring_income_api(income_id):
 @login_required
 def get_status():
     return jsonify(sim.get_status_summary(user_id=current_user.id))
+
+@app.route('/api/auto_advance', methods=['POST'])
+@check_sim
+@login_required
+def auto_advance():
+    """Auto-advance time to today's date if needed. Called on page load."""
+    try:
+        result = sim.auto_advance_time(int(current_user.id))
+        return jsonify({"success": True, "result": result})
+    except Exception as e:
+        print(f"[AUTO-ADVANCE ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/api/ledger', methods=['GET'])
 @check_sim

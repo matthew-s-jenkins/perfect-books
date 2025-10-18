@@ -392,15 +392,33 @@ class BusinessSimulator:
                 running_balance = initial_balance
                 balance_map = {}  # Map entry_id to running balance
 
+                # Group entries by transaction to process them together
+                from collections import defaultdict
+                transactions = defaultdict(list)
                 for entry in sorted_entries:
-                    if entry['account'] == account_filter:
-                        # This account is involved in this entry
-                        if entry['debit'] and entry['debit'] > 0:
-                            running_balance += float(entry['debit'])
-                        if entry['credit'] and entry['credit'] > 0:
-                            running_balance -= float(entry['credit'])
+                    transactions[entry['transaction_uuid']].append(entry)
 
-                    balance_map[entry['entry_id']] = running_balance
+                # Process transactions in order
+                for tx_uuid in sorted(transactions.keys(), key=lambda uuid: min(e['transaction_date'] for e in transactions[uuid])):
+                    tx_entries = transactions[tx_uuid]
+
+                    # Check if this transaction involves the filtered account
+                    filtered_entry = None
+                    for entry in tx_entries:
+                        if entry['account'] == account_filter:
+                            filtered_entry = entry
+                            # Update running balance based on this entry
+                            if entry['debit'] and entry['debit'] > 0:
+                                running_balance += float(entry['debit'])
+                            if entry['credit'] and entry['credit'] > 0:
+                                running_balance -= float(entry['credit'])
+                            break
+
+                    # Assign the running balance to ALL entries in this transaction
+                    # (so all sides of the transaction show the same balance)
+                    if filtered_entry:
+                        for entry in tx_entries:
+                            balance_map[entry['entry_id']] = running_balance
 
                 # Add running balance to each entry
                 for entry in entries:
