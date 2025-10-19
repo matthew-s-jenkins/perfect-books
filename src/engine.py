@@ -376,20 +376,25 @@ class BusinessSimulator:
 
             # If filtering by account, calculate running balance
             if account_filter and entries:
-                # Get initial balance for the account (sum of all transactions before the oldest one shown)
-                oldest_date = min(e['transaction_date'] for e in entries)
+                # Sort entries by date DESCENDING (newest first)
+                sorted_entries = sorted(entries, key=lambda x: (x['transaction_date'], x['entry_id']), reverse=True)
+
+                # Get the most recent transaction date shown
+                most_recent_date = sorted_entries[0]['transaction_date']
+                most_recent_entry_id = sorted_entries[0]['entry_id']
+
+                # Calculate balance UP TO the most recent transaction shown (not all time)
+                # This ensures the running balance matches what's visible in the ledger
                 cursor.execute(
                     "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance "
                     "FROM financial_ledger "
-                    "WHERE user_id = %s AND account = %s AND transaction_date < %s",
-                    (user_id, account_filter, oldest_date)
+                    "WHERE user_id = %s AND account = %s "
+                    "AND (transaction_date < %s OR (transaction_date = %s AND entry_id <= %s))",
+                    (user_id, account_filter, most_recent_date, most_recent_date, most_recent_entry_id)
                 )
-                initial_balance = float(cursor.fetchone()['balance'] or 0)
+                current_balance = float(cursor.fetchone()['balance'] or 0)
 
-                # Sort entries by date ascending for balance calculation
-                sorted_entries = sorted(entries, key=lambda x: (x['transaction_date'], x['entry_id']))
-
-                running_balance = initial_balance
+                running_balance = current_balance
                 balance_map = {}  # Map entry_id to running balance
 
                 # Group entries by transaction to process them together
@@ -398,27 +403,25 @@ class BusinessSimulator:
                 for entry in sorted_entries:
                     transactions[entry['transaction_uuid']].append(entry)
 
-                # Process transactions in order
-                for tx_uuid in sorted(transactions.keys(), key=lambda uuid: min(e['transaction_date'] for e in transactions[uuid])):
+                # Process transactions in reverse chronological order (newest to oldest)
+                for tx_uuid in sorted(transactions.keys(), key=lambda uuid: max(e['transaction_date'] for e in transactions[uuid]), reverse=True):
                     tx_entries = transactions[tx_uuid]
 
-                    # Check if this transaction involves the filtered account
-                    filtered_entry = None
+                    # Assign the CURRENT running balance to all entries in this transaction FIRST
+                    # (so all sides of the transaction show the same balance - the balance AFTER this transaction)
+                    for entry in tx_entries:
+                        balance_map[entry['entry_id']] = running_balance
+
+                    # Then update the running balance by reversing this transaction
+                    # (subtracting debits, adding back credits to go backwards in time)
                     for entry in tx_entries:
                         if entry['account'] == account_filter:
-                            filtered_entry = entry
-                            # Update running balance based on this entry
+                            old_balance = running_balance
                             if entry['debit'] and entry['debit'] > 0:
-                                running_balance += float(entry['debit'])
+                                running_balance -= float(entry['debit'])  # Reverse: subtract debits
                             if entry['credit'] and entry['credit'] > 0:
-                                running_balance -= float(entry['credit'])
+                                running_balance += float(entry['credit'])  # Reverse: add back credits
                             break
-
-                    # Assign the running balance to ALL entries in this transaction
-                    # (so all sides of the transaction show the same balance)
-                    if filtered_entry:
-                        for entry in tx_entries:
-                            balance_map[entry['entry_id']] = running_balance
 
                 # Add running balance to each entry
                 for entry in entries:
@@ -1066,25 +1069,52 @@ class BusinessSimulator:
                     )
                 )
 
-            # Update account balances
-            for entry in entries:
-                account_name = entry['account']
-                debit_amount = entry['debit'] or Decimal('0.00')
-                credit_amount = entry['credit'] or Decimal('0.00')
-
-                # Reverse the effect: subtract debits, add credits
-                balance_change = credit_amount - debit_amount
-
-                cursor.execute(
-                    "UPDATE accounts SET balance = balance + %s WHERE user_id = %s AND name = %s",
-                    (balance_change, user_id, account_name)
-                )
+            # Note: We don't manually update account balances here because the reversal
+            # ledger entries (with swapped debits/credits) automatically reverse the effect
+            # when the balance is calculated from the ledger.
+            # Manual updates would double-count the reversal.
 
             conn.commit()
             return True, f"Transaction reversed successfully. Original: '{original_description}'"
         except Exception as e:
             conn.rollback()
             return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def sync_account_balances(self, user_id):
+        """Recalculate all account balances from ledger entries to fix any discrepancies"""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get all user accounts
+            cursor.execute("SELECT account_id, name FROM accounts WHERE user_id = %s", (user_id,))
+            accounts = cursor.fetchall()
+
+            updated = []
+            for account in accounts:
+                account_name = account['name']
+
+                # Calculate balance from ledger
+                cursor.execute(
+                    "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as ledger_balance "
+                    "FROM financial_ledger WHERE user_id = %s AND account = %s",
+                    (user_id, account_name)
+                )
+                ledger_balance = float(cursor.fetchone()['ledger_balance'] or 0)
+
+                # Update account balance
+                cursor.execute(
+                    "UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s",
+                    (ledger_balance, account['account_id'], user_id)
+                )
+                updated.append(f"{account_name}: ${ledger_balance:.2f}")
+
+            conn.commit()
+            return {"updated": updated, "count": len(updated)}
+        except Exception as e:
+            conn.rollback()
+            raise e
         finally:
             cursor.close()
             conn.close()

@@ -4058,15 +4058,6 @@
                     }
                     const [accountsData, ledgerData, incomeDescData, expenseDescData, categoriesData, meterSummaryData, averageDataResponse, statusData] = await Promise.all(responses.map(res => res.json()));
 
-                    // DEBUG: Log raw date values from API
-                    console.log('=== DATE DEBUG ===');
-                    console.log('Status date from API:', statusData.date);
-                    console.log('Status date type:', typeof statusData.date);
-                    console.log('First ledger entry date:', ledgerData[0]?.transaction_date);
-                    console.log('Parsed status date:', new Date(statusData.date));
-                    console.log('Parsed ledger date:', new Date(ledgerData[0]?.transaction_date));
-                    console.log('==================');
-
                     setAccounts(accountsData);
                     setLedger(ledgerData);
                     setIncomeDescriptions(incomeDescData);

@@ -512,6 +512,20 @@ def auto_advance():
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)}), 500
 
+@app.route('/api/sync_balances', methods=['POST'])
+@check_sim
+@login_required
+def sync_balances():
+    """Recalculate all account balances from ledger entries (fixes discrepancies)"""
+    try:
+        result = sim.sync_account_balances(user_id=current_user.id)
+        return jsonify({"success": True, "result": result})
+    except Exception as e:
+        print(f"[SYNC ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)}), 500
+
 @app.route('/api/ledger', methods=['GET'])
 @check_sim
 @login_required
