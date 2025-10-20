@@ -414,14 +414,21 @@ class BusinessSimulator:
 
                     # Then update the running balance by reversing this transaction
                     # (subtracting debits, adding back credits to go backwards in time)
+                    filtered_entry_found = False
                     for entry in tx_entries:
                         if entry['account'] == account_filter:
-                            old_balance = running_balance
+                            filtered_entry_found = True
                             if entry['debit'] and entry['debit'] > 0:
                                 running_balance -= float(entry['debit'])  # Reverse: subtract debits
                             if entry['credit'] and entry['credit'] > 0:
                                 running_balance += float(entry['credit'])  # Reverse: add back credits
                             break
+
+                    # Safety check: if no entry matched the filter, don't update running balance
+                    # This shouldn't happen based on the query, but prevents calculation errors
+                    if not filtered_entry_found:
+                        print(f"[WARNING] Transaction {tx_uuid} has no entry for account '{account_filter}'")
+
 
                 # Add running balance to each entry
                 for entry in entries:
