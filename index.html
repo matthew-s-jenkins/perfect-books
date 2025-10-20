@@ -1040,7 +1040,7 @@
                                             <div className="w-20 md:w-32 text-right font-mono text-cyan-400 text-xs md:text-sm ml-2">{singleAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
                                             {accountFilter ? (
                                                 <div className="w-32 text-right text-xs font-mono text-yellow-400 hidden md:block">
-                                                    {runningBalance !== null ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
+                                                    {runningBalance !== null && runningBalance !== undefined ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
                                                 </div>
                                             ) : (
                                                 <>
