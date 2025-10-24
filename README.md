@@ -87,7 +87,9 @@ Most personal finance apps are glorified spreadsheets. Perfect Books proves you 
 
 - **Expense Categorization**: Custom categories with color coding (10 default categories included)
 - **Income Tracking**: Log all income sources with descriptions
-- **Transaction History**: Complete, searchable ledger with date filtering
+- **Transaction History**: Complete, immutable ledger with date filtering
+- **Account Filtering**: Filter ledger by specific account with running balance display
+- **Transaction Reversal**: Reverse incorrect transactions (creates audit trail, prevents deletion)
 - **Category Analytics**: See spending breakdown by category
 
 ### 🔄 Recurring Transactions
@@ -113,7 +115,8 @@ Most personal finance apps are glorified spreadsheets. Perfect Books proves you 
 
 ### 🕐 Time Simulation
 
-- **Advance Time**: Fast-forward days/weeks to see recurring expenses process
+- **Auto-Advance Time**: Automatically advances to current date on login and page refresh
+- **Manual Advance**: Fast-forward days/weeks to see recurring expenses process
 - **What-If Analysis**: Test financial scenarios before they happen
 - **Automated Processing**: Recurring expenses auto-pay when their due date arrives
 
@@ -284,8 +287,10 @@ The database follows **normalized design principles** with referential integrity
 - **Cascade Deletes**: Deleting a user removes all their data automatically
 - **Indexes**: Optimized for common queries (user_id, transaction_date, category_id)
 - **Decimal Precision**: All money values use `DECIMAL(10,2)` or `DECIMAL(12,2)`
-- **Immutable Ledger**: Financial ledger is append-only for audit trail
+- **Immutable Ledger**: Financial ledger is append-only for audit trail (no edits/deletes, only reversals)
+- **Transaction UUIDs**: Group related ledger entries for reversal and tracking
 - **Category Integration**: Recurring expenses and ledger entries support categorization
+- **Reversal Audit Trail**: Reversed transactions marked with "REVERSED:" prefix, reversals marked with "REVERSAL OF:"
 
 ---
 
@@ -313,10 +318,11 @@ The database follows **normalized design principles** with referential integrity
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/ledger` | ✓ | Get transaction history |
+| GET | `/api/ledger` | ✓ | Get transaction history (supports ?account= filter) |
 | POST | `/api/income` | ✓ | Log income |
 | POST | `/api/expense` | ✓ | Log expense (with category) |
 | POST | `/api/transfer` | ✓ | Transfer between accounts |
+| POST | `/api/reverse_transaction` | ✓ | Reverse a transaction (immutable audit trail) |
 
 ### Recurring Expense Endpoints
 
@@ -342,39 +348,43 @@ The database follows **normalized design principles** with referential integrity
 |--------|----------|------|-------------|
 | GET | `/api/summary` | ✓ | Get financial summary |
 | POST | `/api/advance_time` | ✓ | Advance simulation time |
+| POST | `/api/auto_advance` | ✓ | Auto-advance to current date (called on page load) |
+| POST | `/api/sync_balances` | ✓ | Recalculate all account balances from ledger |
 
 ---
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v2.0)
+### ✅ Current Features (v2.2)
 - ✅ Multi-user authentication with bcrypt
 - ✅ Double-entry accounting system
 - ✅ Multi-account management
 - ✅ Income and expense tracking
+- ✅ **Account-filtered ledger view** with running balance calculation
+- ✅ **Transaction reversal** with immutable audit trail
+- ✅ **Auto-advance time** to current date on page load
+- ✅ **Account balance sync** utility for data integrity
 - ✅ **Recurring expenses with category support**
-- ✅ **Variable Recurring Expenses** - Handle bills that change monthly
+- ✅ **Variable Recurring Expenses** - Bills with changing amounts (electricity, water, etc.)
+  - ✅ Pending transaction approval system
+  - ✅ Estimated vs actual amount tracking
+  - ✅ Approve or skip variable bills
+- ✅ **Variable Recurring Income** - Paychecks with overtime/bonuses
 - ✅ **Color-coded expense categories**
-- ✅ Loan tracking
+- ✅ **Loan tracking with payment breakdown**
+  - ✅ Principal vs Interest split
+  - ✅ Escrow tracking (for mortgages)
+  - ✅ Additional fees support
+  - ✅ Proper accounting for all payment components
+- ✅ **Credit Card Interest Automation**
+  - ✅ Automatic monthly interest calculation based on APR
+  - ✅ Pending approval system for interest charges
+  - ✅ Tracks last interest date to prevent double-charging
 - ✅ Time simulation
 - ✅ Transaction history
 - ✅ Real-time net worth calculation
 - ✅ React-based responsive UI
 
-### 🚧 In Development (v2.1)
-- [ ] **Variable Recurring Expenses** - Handle bills that change monthly
-  - Electric, gas, water bills with variable amounts
-  - Pending transaction approval system
-  - "Review pending bills" notification on login
-  - Enter actual amount vs estimated amount
-- [ ] **Loan Payment Split** - Principal vs Interest breakdown
-  - Proper accounting for loan payments
-  - Track payment history with amortization
-  - Show principal/interest breakdown in UI
-- [ ] **Credit Card Interest Automation**
-  - Automatic monthly interest calculation
-  - APR-based interest accrual
-  - Payment allocation logic
 
 ### 🔮 Planned Features (v3.0)
 - [ ] Budget planning and alerts

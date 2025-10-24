@@ -1076,6 +1076,13 @@ class BusinessSimulator:
                     )
                 )
 
+            # Mark the original transaction as reversed by updating its description
+            for entry in entries:
+                cursor.execute(
+                    "UPDATE financial_ledger SET description = %s WHERE entry_id = %s AND user_id = %s",
+                    (f"REVERSED: {entry['description']}", entry['entry_id'], user_id)
+                )
+
             # Note: We don't manually update account balances here because the reversal
             # ledger entries (with swapped debits/credits) automatically reverse the effect
             # when the balance is calculated from the ledger.
