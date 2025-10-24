@@ -315,21 +315,35 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def get_ledger_entries(self, user_id, transaction_limit=20, account_filter=None):
+    def get_ledger_entries(self, user_id, transaction_limit=20, transaction_offset=0, account_filter=None, start_date=None, end_date=None):
         """
-        Get ledger entries for a user, optionally filtered to a specific account.
+        Get ledger entries for a user, optionally filtered to a specific account and/or date range.
 
         Args:
             user_id: The user ID
             transaction_limit: Maximum number of transactions to return
+            transaction_offset: Number of transactions to skip (for pagination)
             account_filter: Optional account name to filter by. If provided, only shows
                           transactions that involve this account.
+            start_date: Optional start date (YYYY-MM-DD format) for date range filtering
+            end_date: Optional end date (YYYY-MM-DD format) for date range filtering
 
         Returns:
             List of ledger entries with running balance if filtered to one account
         """
         conn, cursor = self._get_db_connection()
         try:
+            # Build date filter conditions
+            date_conditions = []
+            date_params = []
+            if start_date:
+                date_conditions.append("transaction_date >= %s")
+                date_params.append(start_date)
+            if end_date:
+                date_conditions.append("transaction_date <= %s")
+                date_params.append(end_date)
+            date_filter = " AND " + " AND ".join(date_conditions) if date_conditions else ""
+
             if account_filter:
                 # When filtering by account, get all entries for transactions involving that account
                 query = (
@@ -340,20 +354,21 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT DISTINCT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = %s AND description != 'Time Advanced' "
+                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter +
                     "      AND transaction_uuid IN ( "
-                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = %s AND account = %s "
+                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = %s AND account = %s " + date_filter +
                     "      ) "
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
-                    "    LIMIT %s "
+                    "    LIMIT %s OFFSET %s "
                     ") AS recent_t "
                     "ON l.transaction_uuid = recent_t.transaction_uuid "
                     "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
                 )
-                cursor.execute(query, (user_id, user_id, account_filter, transaction_limit, user_id))
+                params = [user_id] + date_params + [user_id, account_filter] + date_params + [transaction_limit, transaction_offset, user_id]
+                cursor.execute(query, params)
             else:
-                # Original query - no filter
+                # Original query - no account filter
                 query = (
                     "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit, "
                     "l.category_id, c.name as category_name, c.color as category_color "
@@ -362,15 +377,16 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = %s AND description != 'Time Advanced' "
+                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter +
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
-                    "    LIMIT %s "
+                    "    LIMIT %s OFFSET %s "
                     ") AS recent_t "
                     "ON l.transaction_uuid = recent_t.transaction_uuid "
                     "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
                 )
-                cursor.execute(query, (user_id, transaction_limit, user_id))
+                params = [user_id] + date_params + [transaction_limit, transaction_offset, user_id]
+                cursor.execute(query, params)
 
             entries = cursor.fetchall()
 

@@ -87,10 +87,14 @@ Most personal finance apps are glorified spreadsheets. Perfect Books proves you 
 
 - **Expense Categorization**: Custom categories with color coding (10 default categories included)
 - **Income Tracking**: Log all income sources with descriptions
-- **Transaction History**: Complete, immutable ledger with date filtering
+- **Transaction History**: Complete, immutable ledger with advanced filtering
+- **Pagination Support**: "Load More" button to view up to 100 transactions per session
+- **Date Range Filtering**: Filter transactions by start date, end date, or date range
 - **Account Filtering**: Filter ledger by specific account with running balance display
+- **Color-Coded Amounts**: Green for increases, red for decreases when viewing single account
 - **Transaction Reversal**: Reverse incorrect transactions (creates audit trail, prevents deletion)
 - **Category Analytics**: See spending breakdown by category
+- **CSV Export**: Export filtered transaction data for external analysis
 
 ### 🔄 Recurring Transactions
 
@@ -318,7 +322,7 @@ The database follows **normalized design principles** with referential integrity
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/ledger` | ✓ | Get transaction history (supports ?account= filter) |
+| GET | `/api/ledger` | ✓ | Get transaction history with pagination and filtering<br/>Query params: `?limit=20&offset=0&account=AccountName&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` |
 | POST | `/api/income` | ✓ | Log income |
 | POST | `/api/expense` | ✓ | Log expense (with category) |
 | POST | `/api/transfer` | ✓ | Transfer between accounts |
@@ -355,12 +359,17 @@ The database follows **normalized design principles** with referential integrity
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v2.2)
+### ✅ Current Features (v2.3)
 - ✅ Multi-user authentication with bcrypt
 - ✅ Double-entry accounting system
 - ✅ Multi-account management
 - ✅ Income and expense tracking
-- ✅ **Account-filtered ledger view** with running balance calculation
+- ✅ **Enhanced Transaction History**
+  - ✅ Account-filtered ledger view with running balance calculation
+  - ✅ Date range filtering (start date, end date, or both)
+  - ✅ Pagination with "Load More" (up to 100 transactions)
+  - ✅ Color-coded amounts (green for increases, red for decreases in filtered view)
+  - ✅ Combined filtering (account + date range simultaneously)
 - ✅ **Transaction reversal** with immutable audit trail
 - ✅ **Auto-advance time** to current date on page load
 - ✅ **Account balance sync** utility for data integrity
@@ -381,7 +390,6 @@ The database follows **normalized design principles** with referential integrity
   - ✅ Pending approval system for interest charges
   - ✅ Tracks last interest date to prevent double-charging
 - ✅ Time simulation
-- ✅ Transaction history
 - ✅ Real-time net worth calculation
 - ✅ React-based responsive UI
 
@@ -391,13 +399,13 @@ The database follows **normalized design principles** with referential integrity
 - [ ] Financial goal tracking (savings goals, debt payoff)
 - [ ] Scheduled transactions (pay bills on specific future dates)
 - [ ] Receipt uploads and attachment storage
-- [ ] Export to CSV/PDF for tax preparation
+- [ ] Enhanced export options (PDF reports for tax preparation)
 - [ ] Mobile-responsive enhancements
 - [ ] Dark mode toggle
 - [ ] Multi-currency support
-- [ ] Recurring income (paycheck automation)
 - [ ] Investment account tracking
 - [ ] Tax category mapping
+- [ ] Transaction search by description/amount
 
 ### 💡 Future Enhancements
 - [ ] Native mobile app (React Native)

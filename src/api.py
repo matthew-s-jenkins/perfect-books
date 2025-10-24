@@ -531,7 +531,18 @@ def sync_balances():
 @login_required
 def get_ledger():
     account_filter = request.args.get('account')  # Optional query parameter
-    return jsonify(sim.get_ledger_entries(user_id=current_user.id, account_filter=account_filter))
+    limit = request.args.get('limit', 20, type=int)  # Default 20
+    offset = request.args.get('offset', 0, type=int)  # Default 0
+    start_date = request.args.get('start_date')  # Optional start date (YYYY-MM-DD)
+    end_date = request.args.get('end_date')  # Optional end date (YYYY-MM-DD)
+    return jsonify(sim.get_ledger_entries(
+        user_id=current_user.id,
+        transaction_limit=limit,
+        transaction_offset=offset,
+        account_filter=account_filter,
+        start_date=start_date,
+        end_date=end_date
+    ))
 
 @app.route('/api/descriptions/income', methods=['GET'])
 @check_sim
