@@ -298,6 +298,23 @@
                 }
             };
 
+            const handleSyncBalances = async () => {
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/sync_balances`, {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('Account balances synced successfully!', 'success');
+                        onDataChange();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } catch (err) {
+                    showToast('Error syncing balances: ' + err.message, 'error');
+                }
+            };
+
             const calculateTotalPayment = () => {
                 const interest = parseFloat(loanPaymentInterest) || 0;
                 const principal = parseFloat(loanPaymentPrincipal) || 0;
@@ -386,7 +403,16 @@
                 <div className="bg-gray-800 shadow rounded-lg p-4">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-lg sm:text-xl font-bold text-white">Your Accounts</h2>
-                        <a href="setup.html" className="text-cyan-400 hover:text-cyan-300 text-sm">+ Add Account</a>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleSyncBalances}
+                                className="text-yellow-400 hover:text-yellow-300 text-sm px-3 py-1 border border-yellow-400 hover:border-yellow-300 rounded transition-colors"
+                                title="Recalculate all account balances from ledger"
+                            >
+                                🔄 Sync Balances
+                            </button>
+                            <a href="setup.html" className="text-cyan-400 hover:text-cyan-300 text-sm">+ Add Account</a>
+                        </div>
                     </div>
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-700">
@@ -4226,6 +4252,16 @@
                             } catch (err) {
                                 console.error("Auto-advance failed:", err);
                                 // Don't block page load if auto-advance fails
+                            }
+
+                            // Auto-sync account balances to ensure data integrity (runs on every page load/refresh)
+                            try {
+                                await fetchWithCredentials(`${API_BASE_URL}/api/sync_balances`, {
+                                    method: 'POST'
+                                });
+                            } catch (err) {
+                                console.error("Auto-sync balances failed:", err);
+                                // Don't block page load if sync fails
                             }
 
                             refreshData();
