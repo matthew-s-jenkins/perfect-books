@@ -1780,8 +1780,20 @@
         // Interactive Charts Panel - Reusable component with all 6 chart types
         function InteractiveChartsPanel({ dashboardData, showToast }) {
             const [selectedChart, setSelectedChart] = useState('income-expenses');
+            const [selectedCreditAccounts, setSelectedCreditAccounts] = useState({});
             const chartRef = React.useRef(null);
             const chartInstance = React.useRef(null);
+
+            // Initialize selected credit accounts when dashboard data loads
+            useEffect(() => {
+                if (dashboardData?.credit_accounts) {
+                    const initialSelection = {};
+                    dashboardData.credit_accounts.forEach(account => {
+                        initialSelection[account.account_id] = true; // All selected by default
+                    });
+                    setSelectedCreditAccounts(initialSelection);
+                }
+            }, [dashboardData?.credit_accounts]);
 
             useEffect(() => {
                 if (!dashboardData) return;
@@ -1794,7 +1806,7 @@
                     clearTimeout(timer);
                     if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [dashboardData, selectedChart]);
+            }, [dashboardData, selectedChart, selectedCreditAccounts]);
 
             const createChart = () => {
                 if (chartInstance.current) chartInstance.current.destroy();
@@ -1998,6 +2010,82 @@
                             }
                         }
                     });
+                } else if (selectedChart === 'credit-balance' && dashboardData.credit_balance_by_account) {
+                    // Filter accounts based on selection
+                    const selectedAccountIds = Object.keys(selectedCreditAccounts).filter(id => selectedCreditAccounts[id]).map(id => parseInt(id));
+
+                    if (selectedAccountIds.length === 0) {
+                        // No accounts selected, show message
+                        return;
+                    }
+
+                    // Calculate total balance for selected accounts only
+                    const allDates = new Set();
+                    selectedAccountIds.forEach(accountId => {
+                        const accountData = dashboardData.credit_balance_by_account[accountId];
+                        if (accountData && accountData.balances) {
+                            Object.keys(accountData.balances).forEach(date => allDates.add(date));
+                        }
+                    });
+
+                    const sortedDates = Array.from(allDates).sort();
+                    const filteredTrend = sortedDates.map(date => {
+                        let totalBalance = 0;
+                        selectedAccountIds.forEach(accountId => {
+                            const accountData = dashboardData.credit_balance_by_account[accountId];
+                            if (accountData) {
+                                // Find most recent balance up to this date
+                                let balance = null;
+                                for (const d of Object.keys(accountData.balances).sort()) {
+                                    if (d <= date) {
+                                        balance = accountData.balances[d];
+                                    }
+                                }
+                                if (balance !== null) {
+                                    totalBalance += balance;
+                                }
+                            }
+                        });
+                        return { date, total_balance: totalBalance };
+                    });
+
+                    if (filteredTrend.length > 0) {
+                        chartInstance.current = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                datasets: [{
+                                    label: 'Total Credit Balance',
+                                    data: filteredTrend.map(d => ({
+                                        x: new Date(d.date),
+                                        y: d.total_balance
+                                    })),
+                                    borderColor: '#f59e0b',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                    fill: true,
+                                    tension: 0.4,
+                                    borderWidth: 3
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: { duration: 1000, easing: 'easeInOutQuart' },
+                                plugins: { legend: { labels: { color: '#e5e7eb', font: { size: 12 } } } },
+                                scales: {
+                                    y: { ticks: { color: '#9ca3af', callback: (v) => '$' + Math.round(v).toLocaleString('en-US') }, grid: { color: '#374151' } },
+                                    x: {
+                                        type: 'time',
+                                        time: {
+                                            unit: 'day',
+                                            displayFormats: { day: 'MMM d' }
+                                        },
+                                        ticks: { color: '#9ca3af' },
+                                        grid: { color: '#374151' }
+                                    }
+                                }
+                            }
+                        });
+                    }
                 } else if (selectedChart === 'top-categories' && dashboardData.top_categories?.length > 0) {
                     chartInstance.current = new Chart(ctx, {
                         type: 'bar',
@@ -2025,6 +2113,7 @@
                 'spending-trends': 'Spending Trends by Category (Monthly expenses shown as weekly avg)',
                 'net-worth': 'Cash Balance Trend',
                 'assets-liabilities': 'Assets vs Liabilities',
+                'credit-balance': 'Credit Balance Over Time',
                 'top-categories': 'Top 5 Expense Categories'
             })[selectedChart] || 'Chart';
 
@@ -2033,8 +2122,19 @@
                 if (selectedChart === 'spending-trends') return dashboardData.weekly_expenses_by_category?.length > 0;
                 if (selectedChart === 'net-worth') return dashboardData.net_worth_trend?.length > 0;
                 if (selectedChart === 'assets-liabilities') return dashboardData.assets_vs_liabilities?.length > 0;
+                if (selectedChart === 'credit-balance') {
+                    const selectedAccountIds = Object.keys(selectedCreditAccounts).filter(id => selectedCreditAccounts[id]);
+                    return dashboardData.credit_balance_by_account && Object.keys(dashboardData.credit_balance_by_account).length > 0 && selectedAccountIds.length > 0;
+                }
                 if (selectedChart === 'top-categories') return dashboardData.top_categories?.length > 0;
                 return false;
+            };
+
+            const toggleCreditAccount = (accountId) => {
+                setSelectedCreditAccounts(prev => ({
+                    ...prev,
+                    [accountId]: !prev[accountId]
+                }));
             };
 
             return (
@@ -2046,14 +2146,44 @@
                             <option value="spending-trends">📊 Spending Trends by Category</option>
                             <option value="net-worth">📈 Cash Balance Trend</option>
                             <option value="assets-liabilities">📈 Assets vs Liabilities</option>
+                            <option value="credit-balance">💳 Credit Balance Over Time</option>
                             <option value="top-categories">🏆 Top 5 Categories</option>
                         </select>
                     </div>
+
+                    {selectedChart === 'credit-balance' && dashboardData?.credit_accounts?.length > 0 && (
+                        <div className="mb-4 bg-gray-700 rounded-lg p-4">
+                            <div className="text-sm text-gray-300 mb-3 font-medium">Select Accounts to Include:</div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {dashboardData.credit_accounts.map(account => (
+                                    <label key={account.account_id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-600 p-2 rounded transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedCreditAccounts[account.account_id] || false}
+                                            onChange={() => toggleCreditAccount(account.account_id)}
+                                            className="w-4 h-4 text-cyan-500 bg-gray-600 border-gray-500 rounded focus:ring-cyan-500"
+                                        />
+                                        <span className="text-white text-sm">
+                                            {account.name}
+                                            <span className="text-gray-400 ml-1 text-xs">
+                                                ({account.type === 'CREDIT_CARD' ? 'Credit Card' : 'Loan'})
+                                            </span>
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div style={{height: '400px', display: hasData() ? 'block' : 'none'}}>
                         <canvas ref={chartRef}></canvas>
                     </div>
                     {!hasData() && (
-                        <div className="flex items-center justify-center h-96 text-gray-500">No data available for this chart</div>
+                        <div className="flex items-center justify-center h-96 text-gray-500">
+                            {selectedChart === 'credit-balance' && Object.keys(selectedCreditAccounts).filter(id => selectedCreditAccounts[id]).length === 0
+                                ? 'Please select at least one account to display the chart'
+                                : 'No data available for this chart'}
+                        </div>
                     )}
                 </div>
             );

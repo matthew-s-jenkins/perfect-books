@@ -2756,6 +2756,104 @@ class BusinessSimulator:
             """, (user_id, start_date, current_date))
             top_categories = cursor.fetchall()
 
+            # Get credit balance over time (credit cards + loans)
+            # First, get all credit accounts for this user
+            cursor.execute("""
+                SELECT account_id, name, type
+                FROM accounts
+                WHERE user_id = %s AND type IN ('CREDIT_CARD', 'LOAN')
+                ORDER BY name
+            """, (user_id,))
+            credit_accounts = cursor.fetchall()
+
+            # Get daily balance changes for credit accounts
+            cursor.execute("""
+                SELECT DATE(transaction_date) as date,
+                    a.account_id,
+                    a.name as account_name,
+                    a.type as account_type,
+                    SUM(credit - debit) as daily_change
+                FROM financial_ledger l
+                JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
+                WHERE l.user_id = %s
+                    AND a.type IN ('CREDIT_CARD', 'LOAN')
+                    AND transaction_date BETWEEN %s AND %s
+                GROUP BY DATE(transaction_date), a.account_id, a.name, a.type
+                ORDER BY date, a.name
+            """, (user_id, start_date, current_date))
+            daily_credit_changes = cursor.fetchall()
+
+            # Calculate starting balance for each credit account before the period
+            cursor.execute("""
+                SELECT
+                    a.account_id,
+                    a.name as account_name,
+                    a.type as account_type,
+                    SUM(credit - debit) as balance_before_period
+                FROM financial_ledger l
+                JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
+                WHERE l.user_id = %s
+                    AND a.type IN ('CREDIT_CARD', 'LOAN')
+                    AND transaction_date < %s
+                GROUP BY a.account_id, a.name, a.type
+            """, (user_id, start_date))
+            starting_balances = cursor.fetchall()
+
+            # Build a map of starting balances by account_id
+            starting_balance_map = {}
+            for row in starting_balances:
+                starting_balance_map[row['account_id']] = float(row['balance_before_period'] or 0)
+
+            # Build cumulative balance by date for each account
+            credit_balance_by_account = {}
+            for account in credit_accounts:
+                account_id = account['account_id']
+                account_name = account['name']
+                account_type = account['type']
+
+                # Initialize with starting balance
+                cumulative = starting_balance_map.get(account_id, 0.0)
+                credit_balance_by_account[account_id] = {
+                    'account_id': account_id,
+                    'account_name': account_name,
+                    'account_type': account_type,
+                    'balances': {}
+                }
+
+                # Add daily changes
+                for row in daily_credit_changes:
+                    if row['account_id'] == account_id:
+                        cumulative += float(row['daily_change'] or 0)
+                        date_str = row['date'].strftime('%Y-%m-%d')
+                        credit_balance_by_account[account_id]['balances'][date_str] = float(cumulative)
+
+            # Calculate total credit balance trend (sum of all selected accounts)
+            # Get all unique dates
+            all_dates = set()
+            for row in daily_credit_changes:
+                all_dates.add(row['date'].strftime('%Y-%m-%d'))
+            all_dates = sorted(list(all_dates))
+
+            credit_balance_trend = []
+            for date_str in all_dates:
+                total_balance = 0.0
+                for account_id, account_data in credit_balance_by_account.items():
+                    # Find the most recent balance for this date or before
+                    balance = None
+                    for d in sorted(account_data['balances'].keys()):
+                        if d <= date_str:
+                            balance = account_data['balances'][d]
+                    if balance is not None:
+                        total_balance += balance
+                    else:
+                        # Use starting balance if no transactions yet
+                        total_balance += starting_balance_map.get(account_id, 0.0)
+
+                credit_balance_trend.append({
+                    'date': date_str,
+                    'total_balance': round(total_balance, 2)
+                })
+
             return {
                 'total_income': total_income,
                 'total_expenses': total_expenses,
@@ -2769,6 +2867,9 @@ class BusinessSimulator:
                 'weekly_expenses_by_category': weekly_expenses_by_category,
                 'assets_vs_liabilities': assets_vs_liabilities,
                 'top_categories': top_categories,
+                'credit_accounts': [{'account_id': a['account_id'], 'name': a['name'], 'type': a['type']} for a in credit_accounts],
+                'credit_balance_by_account': credit_balance_by_account,
+                'credit_balance_trend': credit_balance_trend,
                 'period_days': days
             }
         finally:
