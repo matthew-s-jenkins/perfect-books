@@ -395,6 +395,12 @@ The database follows **normalized design principles** with referential integrity
 
 
 ### 📊 Analytics & Reporting
+- ✅ **Interactive Dashboard Chart** - Weekly Income vs Spending with drill-down
+  - ✅ **Click-to-drill-down** - Click any chart point to see transaction details
+  - ✅ Shows all transactions for the selected week
+  - ✅ Displays week date range and total amount
+  - ✅ Category badges for expenses
+  - ✅ Scrollable transaction list with hover effects
 - ✅ **Interactive Charts Panel** - 6 different chart types in Analysis tab
   - ✅ Weekly Income vs Spending
   - ✅ Spending Trends by Category (with monthly expense averaging)

@@ -1270,6 +1270,9 @@
             const [dashboardData, setDashboardData] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [dateRange, setDateRange] = useState('30');
+            const [selectedWeekData, setSelectedWeekData] = useState(null);
+            const [weekTransactions, setWeekTransactions] = useState([]);
+            const [loadingTransactions, setLoadingTransactions] = useState(false);
             const chartRef = React.useRef(null);
             const chartInstance = React.useRef(null);
 
@@ -1311,6 +1314,45 @@
                     showToast('Error loading dashboard', 'error');
                 } finally {
                     setIsLoading(false);
+                }
+            };
+
+            const loadWeekTransactions = async (weekStart, transactionType) => {
+                setLoadingTransactions(true);
+                try {
+                    // Calculate week end date (6 days after start)
+                    const startDate = new Date(weekStart);
+                    const endDate = new Date(startDate);
+                    endDate.setDate(endDate.getDate() + 6);
+
+                    const startStr = startDate.toISOString().split('T')[0];
+                    const endStr = endDate.toISOString().split('T')[0];
+
+                    // Store the date range for display
+                    setSelectedWeekData(prev => ({
+                        ...prev,
+                        weekStartDate: startStr,
+                        weekEndDate: endStr
+                    }));
+
+                    // Fetch ledger transactions for this week
+                    const response = await fetchWithCredentials(
+                        `${API_BASE_URL}/api/ledger?start_date=${startStr}&end_date=${endStr}&limit=100`
+                    );
+                    if (!response.ok) throw new Error('Failed to fetch transactions');
+                    const data = await response.json();
+
+                    // API returns array directly, not wrapped in object
+                    // Filter by transaction type (Income or Expenses)
+                    const filtered = Array.isArray(data) ? data.filter(t => t.account === transactionType) : [];
+
+                    setWeekTransactions(filtered);
+                } catch (err) {
+                    console.error('Error loading week transactions:', err);
+                    showToast('Error loading week transactions', 'error');
+                    setWeekTransactions([]);
+                } finally {
+                    setLoadingTransactions(false);
                 }
             };
 
@@ -1379,8 +1421,34 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: { duration: 1000, easing: 'easeInOutQuart' },
+                        onClick: (event, elements) => {
+                            if (elements.length > 0) {
+                                const element = elements[0];
+                                const datasetIndex = element.datasetIndex;
+                                const index = element.index;
+                                const weekData = weeklyData[index];
+                                const transactionType = datasetIndex === 0 ? 'Income' : 'Expenses';
+                                const amount = datasetIndex === 0 ? weekData.income : weekData.expenses;
+
+                                // Set selected week data and fetch transactions
+                                setSelectedWeekData({
+                                    weekStart: weekData.week_start,
+                                    type: transactionType,
+                                    amount: amount,
+                                    label: chartInstance.current.data.labels[index]
+                                });
+                                loadWeekTransactions(weekData.week_start, transactionType);
+                            }
+                        },
                         plugins: {
-                            legend: { labels: { color: '#e5e7eb', font: { size: 14 } } }
+                            legend: { labels: { color: '#e5e7eb', font: { size: 14 } } },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: function(context) {
+                                        return '(Click to see details)';
+                                    }
+                                }
+                            }
                         },
                         scales: {
                             y: {
@@ -1770,6 +1838,75 @@
                         {(!dashboardData.weekly_income_expenses || dashboardData.weekly_income_expenses.length === 0) && (
                             <div className="flex items-center justify-center h-96 text-gray-500">
                                 No income/expense data available for this period
+                            </div>
+                        )}
+
+                        {/* Transaction Details Panel */}
+                        {selectedWeekData && (
+                            <div className="mt-6 border-t border-gray-700 pt-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h4 className="text-lg font-semibold text-white mb-1">
+                                            {selectedWeekData.type} Details - {selectedWeekData.label}
+                                        </h4>
+                                        {selectedWeekData.weekStartDate && selectedWeekData.weekEndDate && (
+                                            <p className="text-sm text-gray-400 mb-2">
+                                                {new Date(selectedWeekData.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(selectedWeekData.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            </p>
+                                        )}
+                                        <p className={`text-2xl font-bold ${selectedWeekData.type === 'Income' ? 'text-green-400' : 'text-red-400'}`}>
+                                            Total: ${parseFloat(selectedWeekData.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedWeekData(null);
+                                            setWeekTransactions([]);
+                                        }}
+                                        className="text-gray-400 hover:text-white transition"
+                                    >
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                {loadingTransactions ? (
+                                    <div className="flex items-center justify-center py-8 text-gray-400">
+                                        Loading transactions...
+                                    </div>
+                                ) : weekTransactions.length === 0 ? (
+                                    <div className="text-center py-8 text-gray-500">
+                                        No {selectedWeekData.type.toLowerCase()} transactions found for this week
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                        {weekTransactions.map((transaction, idx) => (
+                                            <div key={idx} className="bg-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-600 transition">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-white font-medium">{transaction.description}</span>
+                                                        {transaction.category && (
+                                                            <span className="text-xs px-2 py-1 rounded" style={{backgroundColor: transaction.category_color || '#6366f1', color: '#fff'}}>
+                                                                {transaction.category}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-sm text-gray-400 mt-1">
+                                                        {new Date(transaction.transaction_date).toLocaleDateString('en-US', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric'
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                <div className={`text-lg font-bold ${selectedWeekData.type === 'Income' ? 'text-green-400' : 'text-red-400'}`}>
+                                                    ${parseFloat(selectedWeekData.type === 'Income' ? transaction.credit : transaction.debit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
