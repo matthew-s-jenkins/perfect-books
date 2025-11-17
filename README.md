@@ -41,26 +41,33 @@
 
 **Perfect Books** is a full-stack personal finance application that brings **professional accounting principles** to personal money management. Unlike typical budgeting apps, Perfect Books maintains a complete **double-entry accounting system**, ensuring every transaction is accurately recorded and balanced.
 
-### The Vision
+### Why I Built This
 
-Transform personal finance from simple tracking into **true financial understanding**. Perfect Books allows you to:
-- Manage multiple accounts (checking, savings, credit cards, loans) in one place
-- See real-time net worth and financial health
-- Track income and expenses with customizable categories
-- Automate recurring bills with category-based organization
-- Understand your cash flow with time-based simulation
-- Export data for tax preparation or advanced analysis
+As an independent contractor managing multiple credit cards, loans, and fluctuating income streams, I needed a comprehensive view of my financial position that standard budgeting apps couldn't provide. After years of analyzing sales and inventory data in retail, I wanted to apply the same analytical rigor to my personal finances.
 
-### Why This Matters
+The problem was clear: I had accounts scattered across multiple institutions, debt I wanted to track systematically, and no single tool that gave me a complete picture. Most personal finance apps treat accounts in isolation, but I needed something that worked like a real accounting system - where every transaction is balanced and my overall financial health is always accurate.
 
-Most personal finance apps are glorified spreadsheets. Perfect Books proves you can have **both accuracy and usability** by:
-- 📊 **Business Intelligence Ready**: Normalized MySQL schema designed for Power BI/Tableau
-- 🔒 **Multi-User Security**: Complete data isolation with bcrypt password hashing
-- 📚 **Educational Value**: Learn double-entry accounting through hands-on experience
-- 🔬 **Data Integrity**: Immutable audit trail with transaction UUIDs
-- 🎮 **Time Simulation**: Advance time to see how recurring expenses affect your finances
+Perfect Books solves this by treating personal finances like a business. Built on the same double-entry accounting foundation as my [Digital Harvest](https://github.com/matthew-s-jenkins/digital-harvest-sim) business simulator, it gives me enterprise-grade financial tracking with a clean, modern interface.
 
-**Related Project:** [Digital Harvest](https://github.com/matthew-s-jenkins/digital-harvest-sim) - A business simulation that uses similar accounting architecture
+### What It Does
+
+Perfect Books allows you to:
+- **Manage multiple accounts** (checking, savings, credit cards, loans) with proper double-entry accounting
+- **See real-time net worth** - total assets minus liabilities updated with every transaction
+- **Track all debt in one place** - credit cards and loans with combined balance visualization
+- **Automate recurring bills** with category-based organization and variable amount support
+- **Simulate time** to see how recurring expenses and income affect your finances
+- **Maintain an immutable audit trail** - no transaction is ever truly deleted, only reversed
+
+### Technical Highlights
+
+- **Double-Entry Ledger**: Every transaction creates balanced DR/CR entries, maintaining accounting integrity
+- **Normalized Database Schema**: MySQL database designed for data integrity and Power BI connectivity
+- **Stateless API Architecture**: Flask REST API with secure session-based authentication
+- **Immutable Audit Trail**: Transaction UUIDs group related ledger entries for reversal and tracking
+- **Multi-User Security**: Complete data isolation with bcrypt password hashing
+
+**Related Project:** [Digital Harvest](https://github.com/matthew-s-jenkins/digital-harvest-sim) - A business simulation that shares the same accounting architecture
 
 ---
 
@@ -71,6 +78,47 @@ Most personal finance apps are glorified spreadsheets. Perfect Books proves you 
 ![Perfect Books Demo](screenshots/v5ReactDashboard.gif)
 
 *Multi-page React interface with real-time financial tracking, expense categorization, and automated recurring bill management.*
+
+### Double-Entry Ledger Display
+
+![Double-Entry Ledger](screenshots/double-entry-ledger.jpg)
+
+*Transaction ledger showing balanced DR/CR entries with running balance calculation. Every transaction maintains accounting integrity with proper debits and credits.*
+
+---
+
+## 💡 Technical Challenges Solved
+
+### 1. Double-Entry Accounting Implementation
+
+The core challenge was implementing a true double-entry accounting system where every transaction creates balanced ledger entries. This required:
+
+- **Transaction UUIDs**: Grouping related debit/credit entries together for atomic operations
+- **Immutable Ledger**: Append-only design prevents data corruption - transactions can be reversed but never deleted
+- **Running Balance Calculation**: Efficient SQL queries that calculate account balances on-the-fly while maintaining audit trail
+- **Reversal Logic**: Creating offsetting entries that preserve the complete transaction history
+
+This design ensures financial integrity - the books always balance, and every cent is accounted for.
+
+### 2. Account Filtering with Running Balance
+
+Building the account-filtered ledger view required complex SQL to:
+- Show all transactions involving a specific account (both sides of the entry)
+- Calculate running balance that updates correctly as you scroll through history
+- Handle grouped transactions (transfers, reversals) properly
+- Maintain performance even with thousands of transactions
+
+The solution uses CTEs and window functions to efficiently calculate balances without loading the entire ledger into memory.
+
+### 3. Variable Recurring Transactions
+
+Real-world bills and income often vary month-to-month. I built a pending transaction approval system that:
+- Stores estimated amounts for recurring items
+- Generates pending transactions when due
+- Allows users to approve with actual amounts before posting to the ledger
+- Tracks variance between estimated and actual for future forecasting
+
+This mirrors real business expense management workflows.
 
 ---
 
@@ -415,6 +463,7 @@ The database follows **normalized design principles** with referential integrity
 - ✅ **CSV Export** - Export transaction data for external analysis
 
 ### 🔮 Planned Features (v3.0)
+- [ ] **Power BI Dashboard Integration** - Live connection to MySQL database for advanced analytics
 - [ ] Budget planning and alerts
 - [ ] Financial goal tracking (savings goals, debt payoff)
 - [ ] Scheduled transactions (pay bills on specific future dates)
@@ -427,7 +476,7 @@ The database follows **normalized design principles** with referential integrity
 - [ ] Tax category mapping
 - [ ] Transaction search by description/amount
 
-### 💡 Future Enhancements
+### Future Enhancements
 - [ ] Native mobile app (React Native)
 - [ ] Bank account integration (Plaid API)
 - [ ] AI-powered expense categorization
@@ -504,4 +553,4 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-**Built with ❤️ and Python**
+**Built with Python**
