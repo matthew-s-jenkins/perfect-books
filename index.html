@@ -152,7 +152,8 @@
                 if (category !== 'equity') {
                     const balance = parseFloat(account.balance);
                     if (category === 'asset') acc.assets += balance;
-                    if (category === 'liability') acc.liabilities += balance;
+                    // Liabilities are stored as negative balances, so we take absolute value
+                    if (category === 'liability') acc.liabilities += Math.abs(balance);
                 }
                 return acc;
             }, { assets: 0, liabilities: 0 });

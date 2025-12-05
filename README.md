@@ -75,7 +75,7 @@ Perfect Books allows you to:
 
 ### Interactive Web Dashboard
 
-![Perfect Books Demo](screenshots/v5ReactDashboard.gif)
+![Perfect Books Demo](screenshots/Dashboard.gif)
 
 *Multi-page React interface with real-time financial tracking, expense categorization, and automated recurring bill management.*
 
