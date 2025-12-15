@@ -101,8 +101,11 @@ TABLES['financial_ledger'] = (
     "  `debit` DECIMAL(10, 2) DEFAULT 0.00,"
     "  `credit` DECIMAL(10, 2) DEFAULT 0.00,"
     "  `category_id` INT DEFAULT NULL,"
+    "  `is_reversal` BOOLEAN DEFAULT FALSE,"
+    "  `reversal_of_id` INT DEFAULT NULL,"
     "  INDEX `idx_user_id_date` (`user_id`, `transaction_date` DESC),"
     "  INDEX `idx_category_id` (`category_id`),"
+    "  INDEX `idx_is_reversal` (`is_reversal`),"
     "  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
     ") ENGINE=InnoDB")
 

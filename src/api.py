@@ -535,13 +535,15 @@ def get_ledger():
     offset = request.args.get('offset', 0, type=int)  # Default 0
     start_date = request.args.get('start_date')  # Optional start date (YYYY-MM-DD)
     end_date = request.args.get('end_date')  # Optional end date (YYYY-MM-DD)
+    show_reversals = request.args.get('show_reversals', 'true', type=str).lower() == 'true'  # Default true
     return jsonify(sim.get_ledger_entries(
         user_id=current_user.id,
         transaction_limit=limit,
         transaction_offset=offset,
         account_filter=account_filter,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        show_reversals=show_reversals
     ))
 
 @app.route('/api/descriptions/income', methods=['GET'])

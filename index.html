@@ -704,6 +704,7 @@
             const [isLoadingMore, setIsLoadingMore] = useState(false);
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
+            const [showReversals, setShowReversals] = useState(true);  // Show reversals by default (checked)
             const MAX_LOADED_TRANSACTIONS = 100;
 
             const accountTypeMap = new Map();
@@ -711,11 +712,11 @@
                 accountTypeMap.set(acc.name, acc.type);
             });
 
-            // Fetch filtered ledger when account filter or date range changes
+            // Fetch filtered ledger when account filter, date range, or showReversals changes
             useEffect(() => {
                 const fetchFilteredLedger = async () => {
-                    // If no filters are applied, use the initially loaded ledger data
-                    if (accountFilter === null && !startDate && !endDate) {
+                    // If no filters are applied AND showReversals is true, use the initially loaded ledger data
+                    if (accountFilter === null && !startDate && !endDate && showReversals === true) {
                         setFilteredLedgerData(ledger);
                         setCurrentOffset(ledger.length);
                         // Check if there might be more transactions beyond what was initially loaded
@@ -726,7 +727,7 @@
                     setIsLoadingFilter(true);
                     setCurrentOffset(0);
                     try {
-                        let url = `${API_BASE_URL}/api/ledger?limit=20&offset=0`;
+                        let url = `${API_BASE_URL}/api/ledger?limit=20&offset=0&show_reversals=${showReversals}`;
                         if (accountFilter) url += `&account=${encodeURIComponent(accountFilter)}`;
                         if (startDate) url += `&start_date=${startDate}`;
                         if (endDate) url += `&end_date=${endDate}`;
@@ -746,7 +747,7 @@
                 };
 
                 fetchFilteredLedger();
-            }, [accountFilter, startDate, endDate]);
+            }, [accountFilter, startDate, endDate, showReversals]);
 
             // Reset to unfiltered ledger when prop changes
             useEffect(() => {
@@ -762,8 +763,8 @@
                 setIsLoadingMore(true);
                 try {
                     let url = accountFilter
-                        ? `${API_BASE_URL}/api/ledger?account=${encodeURIComponent(accountFilter)}&limit=20&offset=${currentOffset}`
-                        : `${API_BASE_URL}/api/ledger?limit=20&offset=${currentOffset}`;
+                        ? `${API_BASE_URL}/api/ledger?account=${encodeURIComponent(accountFilter)}&limit=20&offset=${currentOffset}&show_reversals=${showReversals}`
+                        : `${API_BASE_URL}/api/ledger?limit=20&offset=${currentOffset}&show_reversals=${showReversals}`;
 
                     // Add date range parameters if set
                     if (startDate) url += `&start_date=${startDate}`;
@@ -1005,6 +1006,24 @@
                                     </button>
                                 )}
                             </div>
+                        </div>
+
+                        {/* Show Reversals Checkbox */}
+                        <div className="mb-3">
+                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={showReversals}
+                                    onChange={(e) => setShowReversals(e.target.checked)}
+                                    className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-2 focus:ring-cyan-500"
+                                />
+                                <span>Show Reversals</span>
+                            </label>
+                            {!showReversals && (
+                                <div className="mt-1 text-xs text-gray-400">
+                                    Reversed transactions are hidden from view
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -1336,9 +1355,9 @@
                         weekEndDate: endStr
                     }));
 
-                    // Fetch ledger transactions for this week
+                    // Fetch ledger transactions for this week (exclude reversals)
                     const response = await fetchWithCredentials(
-                        `${API_BASE_URL}/api/ledger?start_date=${startStr}&end_date=${endStr}&limit=100`
+                        `${API_BASE_URL}/api/ledger?start_date=${startStr}&end_date=${endStr}&limit=100&show_reversals=false`
                     );
                     if (!response.ok) throw new Error('Failed to fetch transactions');
                     const data = await response.json();
@@ -3445,11 +3464,18 @@
             );
         }
 
-        function LogIncomeForm({ accounts, onClose, onIncomeAdded, suggestions, showToast, status }) {
+        function LogIncomeForm({ accounts, onClose, onIncomeAdded, suggestions, showToast, status, preselectedAccountName }) {
             const [description, setDescription] = useState('');
             const [amount, setAmount] = useState('');
             const [amountDisplay, setAmountDisplay] = useState('');
-            const [selectedAccountId, setSelectedAccountId] = useState('');
+            // Auto-select account if ledger is filtered to a specific account
+            const [selectedAccountId, setSelectedAccountId] = useState(() => {
+                if (preselectedAccountName) {
+                    const matchingAccount = accounts.find(acc => acc.name === preselectedAccountName);
+                    return matchingAccount ? String(matchingAccount.account_id) : '';
+                }
+                return '';
+            });
             const [transactionDate, setTransactionDate] = useState(() => {
                 if (status?.date) {
                     const d = new Date(status.date);
@@ -3517,7 +3543,9 @@
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Description</label>
                                 <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" list="income-suggestions" required/>
-                                <datalist id="income-suggestions">{suggestions.map(s => <option key={s} value={s} />)}</datalist>
+                                <datalist id="income-suggestions">
+                                    {description.length >= 1 && suggestions.map(s => <option key={s} value={s} />)}
+                                </datalist>
                             </div>
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 <div>
@@ -3693,11 +3721,18 @@
             );
         }
 
-        function LogExpenseForm({ accounts, onClose, onExpenseAdded, suggestions, showToast, categories, status }) {
+        function LogExpenseForm({ accounts, onClose, onExpenseAdded, suggestions, showToast, categories, status, preselectedAccountName }) {
             const [description, setDescription] = useState('');
             const [amount, setAmount] = useState('');
             const [amountDisplay, setAmountDisplay] = useState('');
-            const [selectedAccountId, setSelectedAccountId] = useState('');
+            // Auto-select account if ledger is filtered to a specific account
+            const [selectedAccountId, setSelectedAccountId] = useState(() => {
+                if (preselectedAccountName) {
+                    const matchingAccount = accounts.find(acc => acc.name === preselectedAccountName);
+                    return matchingAccount ? String(matchingAccount.account_id) : '';
+                }
+                return '';
+            });
             const [selectedCategoryId, setSelectedCategoryId] = useState('');
             const [transactionDate, setTransactionDate] = useState(() => {
                 if (status?.date) {
@@ -3780,7 +3815,9 @@
                             <div className="mb-4">
                                 <label className="block text-gray-400 mb-2">Description</label>
                                 <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded" list="expense-suggestions" required/>
-                                <datalist id="expense-suggestions">{suggestions.map(s => <option key={s} value={s} />)}</datalist>
+                                <datalist id="expense-suggestions">
+                                    {description.length >= 1 && suggestions.map(s => <option key={s} value={s} />)}
+                                </datalist>
                             </div>
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 <div>
@@ -4558,8 +4595,8 @@
                         )}
                     </main>
                     {isTransferFormVisible && <TransferForm accounts={accounts.filter(acc => !['EQUITY'].includes(acc.type))} onClose={() => setIsTransferFormVisible(false)} onTransferComplete={handleTransactionAdded} showToast={showToast} status={status}/>}
-                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type))} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions} showToast={showToast} status={status}/>}
-                    {isExpenseFormVisible && <LogExpenseForm accounts={accounts.filter(acc => !['FIXED_ASSET', 'LOAN', 'EQUITY'].includes(acc.type))} onClose={() => setIsExpenseFormVisible(false)} onExpenseAdded={handleTransactionAdded} suggestions={expenseDescriptions} showToast={showToast} categories={expenseCategories} status={status}/>}
+                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type))} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions} showToast={showToast} status={status} preselectedAccountName={ledgerAccountFilter}/>}
+                    {isExpenseFormVisible && <LogExpenseForm accounts={accounts.filter(acc => !['FIXED_ASSET', 'LOAN', 'EQUITY'].includes(acc.type))} onClose={() => setIsExpenseFormVisible(false)} onExpenseAdded={handleTransactionAdded} suggestions={expenseDescriptions} showToast={showToast} categories={expenseCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
                     {showPendingModal && <PendingTransactionsModal onClose={() => setShowPendingModal(false)} onApprove={handleTransactionAdded} />}
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
                 </div>

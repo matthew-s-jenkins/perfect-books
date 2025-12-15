@@ -315,7 +315,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def get_ledger_entries(self, user_id, transaction_limit=20, transaction_offset=0, account_filter=None, start_date=None, end_date=None):
+    def get_ledger_entries(self, user_id, transaction_limit=20, transaction_offset=0, account_filter=None, start_date=None, end_date=None, show_reversals=True):
         """
         Get ledger entries for a user, optionally filtered to a specific account and/or date range.
 
@@ -327,6 +327,7 @@ class BusinessSimulator:
                           transactions that involve this account.
             start_date: Optional start date (YYYY-MM-DD format) for date range filtering
             end_date: Optional end date (YYYY-MM-DD format) for date range filtering
+            show_reversals: Whether to include reversal transactions (default True)
 
         Returns:
             List of ledger entries with running balance if filtered to one account
@@ -344,6 +345,9 @@ class BusinessSimulator:
                 date_params.append(end_date)
             date_filter = " AND " + " AND ".join(date_conditions) if date_conditions else ""
 
+            # Build reversal filter condition
+            reversal_filter = "" if show_reversals else " AND is_reversal = FALSE"
+
             if account_filter:
                 # When filtering by account, get all entries for transactions involving that account
                 query = (
@@ -354,9 +358,9 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT DISTINCT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter +
+                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter + reversal_filter +
                     "      AND transaction_uuid IN ( "
-                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = %s AND account = %s " + date_filter +
+                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = %s AND account = %s " + date_filter + reversal_filter +
                     "      ) "
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
@@ -377,7 +381,7 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter +
+                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter + reversal_filter +
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
                     "    LIMIT %s OFFSET %s "
@@ -401,11 +405,13 @@ class BusinessSimulator:
 
                 # Calculate balance UP TO the most recent transaction shown (not all time)
                 # This ensures the running balance matches what's visible in the ledger
+                # Exclude reversals from balance calculation if show_reversals is False
+                balance_reversal_filter = "" if show_reversals else " AND is_reversal = FALSE"
                 cursor.execute(
                     "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance "
                     "FROM financial_ledger "
-                    "WHERE user_id = %s AND account = %s "
-                    "AND (transaction_date < %s OR (transaction_date = %s AND entry_id <= %s))",
+                    "WHERE user_id = %s AND account = %s " + balance_reversal_filter +
+                    " AND (transaction_date < %s OR (transaction_date = %s AND entry_id <= %s))",
                     (user_id, account_filter, most_recent_date, most_recent_date, most_recent_entry_id)
                 )
                 current_balance = float(cursor.fetchone()['balance'] or 0)
@@ -505,15 +511,29 @@ class BusinessSimulator:
             conn.close()
 
     def get_unique_descriptions(self, user_id, transaction_type='expense'):
+        """Get unique transaction descriptions from the last 30 days, excluding reversals."""
         conn, cursor = self._get_db_connection()
         try:
-            base_query = "SELECT DISTINCT description FROM financial_ledger WHERE user_id = %s AND description != ''"
+            # Get current user date
+            current_date = self._get_user_current_date(cursor, user_id)
+            thirty_days_ago = current_date - datetime.timedelta(days=30)
+
+            base_query = """
+                SELECT DISTINCT description
+                FROM financial_ledger
+                WHERE user_id = %s
+                    AND description != ''
+                    AND is_reversal = FALSE
+                    AND transaction_date >= %s
+            """
+
             if transaction_type == 'income':
                 query = f"{base_query} AND account = 'Income' ORDER BY description"
+                cursor.execute(query, (user_id, thirty_days_ago))
             else:
                 query = f"{base_query} AND account = 'Expenses' ORDER BY description"
-            
-            cursor.execute(query, (user_id,))
+                cursor.execute(query, (user_id, thirty_days_ago))
+
             return [row['description'] for row in cursor.fetchall()]
         finally:
             cursor.close()
@@ -697,6 +717,7 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
+                    AND l.is_reversal = FALSE
                 GROUP BY c.category_id, c.name, c.color
                 ORDER BY total_amount DESC
             """
@@ -729,6 +750,7 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
+                    AND l.is_reversal = FALSE
                 GROUP BY DATE(l.transaction_date), c.category_id, c.name, c.color
                 ORDER BY date, c.name
             """
@@ -1069,18 +1091,18 @@ class BusinessSimulator:
             if not entries:
                 return False, "Transaction not found or you do not have permission to reverse it."
 
-            # Check if already reversed
-            original_description = entries[0]['description']
-            if original_description.startswith("REVERSED:") or original_description.startswith("REVERSAL OF:"):
+            # Check if already reversed using the new is_reversal field
+            if entries[0]['is_reversal']:
                 return False, "This transaction has already been reversed or is itself a reversal."
 
             # Create reversal entries (swap debits and credits)
             current_date = self._get_user_current_date(cursor, user_id)
             reversal_uuid = f"reversal-{user_id}-{int(time.time())}"
+            original_description = entries[0]['description']
 
             for entry in entries:
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id, is_reversal, reversal_of_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         user_id,
                         reversal_uuid,
@@ -1088,15 +1110,18 @@ class BusinessSimulator:
                         entry['account'],
                         f"REVERSAL OF: {entry['description']}",
                         entry['credit'],  # Swap: old credit becomes new debit
-                        entry['debit']    # Swap: old debit becomes new credit
+                        entry['debit'],   # Swap: old debit becomes new credit
+                        entry['category_id'],  # Preserve category for analytics
+                        True,             # Mark as reversal
+                        entry['entry_id'] # Link to original entry
                     )
                 )
 
-            # Mark the original transaction as reversed by updating its description
+            # Mark the original transaction as reversed
             for entry in entries:
                 cursor.execute(
-                    "UPDATE financial_ledger SET description = %s WHERE entry_id = %s AND user_id = %s",
-                    (f"REVERSED: {entry['description']}", entry['entry_id'], user_id)
+                    "UPDATE financial_ledger SET description = %s, is_reversal = %s WHERE entry_id = %s AND user_id = %s",
+                    (f"REVERSED: {entry['description']}", True, entry['entry_id'], user_id)
                 )
 
             # Note: We don't manually update account balances here because the reversal
@@ -1787,9 +1812,8 @@ class BusinessSimulator:
             if not payment_acct:
                 return False, "Payment account not found."
 
-            # Generate UUID for transaction
+            # Generate separate UUIDs for each transaction component (improves ledger filtering)
             from uuid import uuid4
-            txn_uuid = str(uuid4())
 
             # Get Interest Expense category (create if doesn't exist)
             cursor.execute("""
@@ -1812,26 +1836,44 @@ class BusinessSimulator:
                 for item in other_amounts:
                     total_payment += Decimal(item['amount'])
 
-            # Create ledger entries
-            # 1. DR Interest Expense (categorized for charts)
+            # Create ledger entries - each component gets its own UUID for independent ledger display
+            # 1. Interest Expense transaction (DR Expenses, CR Payment Account)
             if interest_amount > 0:
+                interest_uuid = str(uuid4())
+                # DR Interest Expense
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
                     VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
-                """, (user_id, txn_uuid, payment_date, f"{loan_account['name']} - Interest",
+                """, (user_id, interest_uuid, payment_date, f"{loan_account['name']} - Interest",
                       interest_amount, interest_category_id))
+                # CR Payment Account
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                """, (user_id, interest_uuid, payment_date, payment_acct['name'],
+                      f"{loan_account['name']} - Interest", interest_amount))
 
-            # 2. DR Loan/Credit Card (reduces liability) - principal only
+            # 2. Principal Payment transaction (DR Loan Account, CR Payment Account)
             if principal_amount > 0:
+                principal_uuid = str(uuid4())
+                # DR Loan/Credit Card (reduces liability)
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
                     VALUES (%s, %s, %s, %s, 'Payment - Principal', %s, 0, NULL)
-                """, (user_id, txn_uuid, payment_date, loan_account['name'], principal_amount))
+                """, (user_id, principal_uuid, payment_date, loan_account['name'], principal_amount))
+                # CR Payment Account
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, %s, 'Payment - Principal', 0, %s, NULL)
+                """, (user_id, principal_uuid, payment_date, payment_acct['name'], principal_amount))
 
-            # 3. Handle escrow as categorized expense
+            # 3. Escrow transaction (DR Expenses, CR Payment Account)
             if escrow_amount > 0:
+                escrow_uuid = str(uuid4())
                 # Get or create Escrow/Housing category
                 cursor.execute("""
                     SELECT category_id FROM expense_categories
@@ -1847,14 +1889,22 @@ class BusinessSimulator:
                 else:
                     escrow_category_id = escrow_cat['category_id']
 
+                # DR Escrow Expense
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
                     VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
-                """, (user_id, txn_uuid, payment_date, f"{loan_account['name']} - Escrow",
+                """, (user_id, escrow_uuid, payment_date, f"{loan_account['name']} - Escrow",
                       escrow_amount, escrow_category_id))
+                # CR Payment Account
+                cursor.execute("""
+                    INSERT INTO financial_ledger
+                    (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                    VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                """, (user_id, escrow_uuid, payment_date, payment_acct['name'],
+                      f"{loan_account['name']} - Escrow", escrow_amount))
 
-            # 4. Handle other amounts (fees, cash advance interest, etc.) as categorized expenses
+            # 4. Other amounts (fees, etc.) - each gets its own transaction
             if other_amounts:
                 # Get or create Fees category
                 cursor.execute("""
@@ -1874,20 +1924,21 @@ class BusinessSimulator:
                 for item in other_amounts:
                     amount = Decimal(item['amount'])
                     if amount > 0:
+                        fee_uuid = str(uuid4())
+                        # DR Fee Expense
                         cursor.execute("""
                             INSERT INTO financial_ledger
                             (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
                             VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
-                        """, (user_id, txn_uuid, payment_date, f"{loan_account['name']} - {item['label']}",
+                        """, (user_id, fee_uuid, payment_date, f"{loan_account['name']} - {item['label']}",
                               amount, fees_category_id))
-
-            # 5. CR Payment Account (total cash out)
-            cursor.execute("""
-                INSERT INTO financial_ledger
-                (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
-            """, (user_id, txn_uuid, payment_date, payment_acct['name'],
-                  f"{loan_account['name']} Payment", total_payment))
+                        # CR Payment Account
+                        cursor.execute("""
+                            INSERT INTO financial_ledger
+                            (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
+                            VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                        """, (user_id, fee_uuid, payment_date, payment_acct['name'],
+                              f"{loan_account['name']} - {item['label']}", amount))
 
             # Update account balances
             # Principal reduces the loan/credit card balance (increases it since it's negative)
@@ -2457,17 +2508,18 @@ class BusinessSimulator:
             current_date = self._get_user_current_date(cursor, user_id)
             start_date = current_date - datetime.timedelta(days=days)
 
-            # Get total income and expenses for the period
+            # Get total income and expenses for the period (exclude reversals)
             cursor.execute("""
                 SELECT
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as total_income,
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as total_expenses
                 FROM financial_ledger
                 WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
+                    AND is_reversal = FALSE
             """, (user_id, start_date, current_date))
             totals = cursor.fetchone()
 
-            # Get spending by category
+            # Get spending by category (exclude reversals)
             cursor.execute("""
                 SELECT c.name, c.color, SUM(l.debit) as amount
                 FROM financial_ledger l
@@ -2476,29 +2528,32 @@ class BusinessSimulator:
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN %s AND %s
                     AND l.category_id IS NOT NULL
+                    AND l.is_reversal = FALSE
                 GROUP BY c.category_id, c.name, c.color
                 ORDER BY amount DESC
             """, (user_id, start_date, current_date))
             spending_by_category = cursor.fetchall()
 
-            # Get net worth over time (daily snapshots)
+            # Get net worth over time (daily snapshots) - exclude reversals
             cursor.execute("""
                 SELECT DATE(transaction_date) as date,
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as daily_change
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = %s AND transaction_date BETWEEN %s AND %s
+                    AND l.is_reversal = FALSE
                 GROUP BY DATE(transaction_date)
                 ORDER BY date
             """, (user_id, start_date, current_date))
             daily_changes = cursor.fetchall()
 
-            # Calculate starting balance at the beginning of the period
+            # Calculate starting balance at the beginning of the period (exclude reversals)
             cursor.execute("""
                 SELECT SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as balance_before_period
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = %s AND transaction_date < %s
+                    AND l.is_reversal = FALSE
             """, (user_id, start_date))
             result = cursor.fetchone()
             starting_balance = float(result['balance_before_period'] or 0) if result else 0.0
@@ -2517,7 +2572,7 @@ class BusinessSimulator:
             total_expenses = float(totals['total_expenses'] or 0)
             savings_rate = ((total_income - total_expenses) / total_income * 100) if total_income > 0 else 0
 
-            # Get monthly income vs expenses for bar chart
+            # Get monthly income vs expenses for bar chart (exclude reversals)
             cursor.execute("""
                 SELECT
                     DATE_FORMAT(transaction_date, '%%Y-%%m') as month,
@@ -2525,6 +2580,7 @@ class BusinessSimulator:
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
                 FROM financial_ledger
                 WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
+                    AND is_reversal = FALSE
                 GROUP BY DATE_FORMAT(transaction_date, '%%Y-%%m')
                 ORDER BY month
             """, (user_id, start_date, current_date))
@@ -2537,7 +2593,7 @@ class BusinessSimulator:
                 } for row in monthly_data
             ]
 
-            # Get weekly income vs expenses for dashboard line chart
+            # Get weekly income vs expenses for dashboard line chart (exclude reversals)
             cursor.execute("""
                 SELECT
                     MIN(transaction_date) as week_start,
@@ -2546,6 +2602,7 @@ class BusinessSimulator:
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
                 FROM financial_ledger
                 WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
+                    AND is_reversal = FALSE
                 GROUP BY YEARWEEK(transaction_date, 1)
                 ORDER BY year_week
             """, (user_id, start_date, current_date))

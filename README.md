@@ -140,7 +140,8 @@ This mirrors real business expense management workflows.
 - **Date Range Filtering**: Filter transactions by start date, end date, or date range
 - **Account Filtering**: Filter ledger by specific account with running balance display
 - **Color-Coded Amounts**: Green for increases, red for decreases when viewing single account
-- **Transaction Reversal**: Reverse incorrect transactions (creates audit trail, prevents deletion)
+- **Transaction Reversal**: Reverse incorrect transactions with dedicated tracking fields (is_reversal, reversal_of_id)
+- **Reversal Filtering**: Toggle to show/hide reversals in ledger view (excluded from totals by default)
 - **Category Analytics**: See spending breakdown by category
 - **CSV Export**: Export filtered transaction data for external analysis
 
@@ -328,7 +329,7 @@ The database follows **normalized design principles** with referential integrity
 |-------|---------|-------------|
 | `users` | Authentication | user_id, username, password_hash |
 | `accounts` | Financial accounts | account_id, user_id, name, type, balance |
-| `financial_ledger` | **Double-entry ledger** | entry_id, user_id, transaction_uuid, account, debit, credit, category_id |
+| `financial_ledger` | **Double-entry ledger** | entry_id, user_id, transaction_uuid, account, debit, credit, category_id, is_reversal, reversal_of_id |
 | `expense_categories` | Custom categories | category_id, user_id, name, color |
 | `recurring_expenses` | Automated bills | expense_id, user_id, description, amount, due_day_of_month, **category_id** |
 | `loans` | Debt tracking | loan_id, user_id, outstanding_balance, monthly_payment |
@@ -342,7 +343,8 @@ The database follows **normalized design principles** with referential integrity
 - **Immutable Ledger**: Financial ledger is append-only for audit trail (no edits/deletes, only reversals)
 - **Transaction UUIDs**: Group related ledger entries for reversal and tracking
 - **Category Integration**: Recurring expenses and ledger entries support categorization
-- **Reversal Audit Trail**: Reversed transactions marked with "REVERSED:" prefix, reversals marked with "REVERSAL OF:"
+- **Reversal Tracking**: Database fields track reversals (is_reversal, reversal_of_id) with automatic exclusion from financial totals
+- **Smart Autocomplete**: Transaction descriptions filtered to last 30 days, shown after typing 1+ characters
 
 ---
 
@@ -370,7 +372,7 @@ The database follows **normalized design principles** with referential integrity
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/ledger` | ✓ | Get transaction history with pagination and filtering<br/>Query params: `?limit=20&offset=0&account=AccountName&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` |
+| GET | `/api/ledger` | ✓ | Get transaction history with pagination and filtering<br/>Query params: `?limit=20&offset=0&account=AccountName&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&show_reversals=true` |
 | POST | `/api/income` | ✓ | Log income |
 | POST | `/api/expense` | ✓ | Log expense (with category) |
 | POST | `/api/transfer` | ✓ | Transfer between accounts |
@@ -418,7 +420,13 @@ The database follows **normalized design principles** with referential integrity
   - ✅ Pagination with "Load More" (up to 100 transactions)
   - ✅ Color-coded amounts (green for increases, red for decreases in filtered view)
   - ✅ Combined filtering (account + date range simultaneously)
-- ✅ **Transaction reversal** with immutable audit trail
+  - ✅ Auto-populate account when adding transactions from filtered ledger view
+  - ✅ Smart description autocomplete (last 30 days, shows after 1 character)
+- ✅ **Enhanced Reversal Tracking**
+  - ✅ Database fields for reversal tracking (is_reversal, reversal_of_id)
+  - ✅ Automatic exclusion from dashboard totals and analysis charts
+  - ✅ Toggle to show/hide reversals in ledger view
+  - ✅ Maintains immutable audit trail
 - ✅ **Auto-advance time** to current date on page load
 - ✅ **Account balance sync** utility for data integrity
 - ✅ **Recurring expenses with category support**
@@ -432,6 +440,7 @@ The database follows **normalized design principles** with referential integrity
   - ✅ Principal vs Interest split
   - ✅ Escrow tracking (for mortgages)
   - ✅ Additional fees support
+  - ✅ Independent transactions for each payment component (better ledger filtering)
   - ✅ Proper accounting for all payment components
 - ✅ **Credit Card Interest Automation**
   - ✅ Automatic monthly interest calculation based on APR
