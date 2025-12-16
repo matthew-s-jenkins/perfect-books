@@ -72,7 +72,7 @@
 
         function Header({ status, username, showToast }) {
             const formattedDate = status ?
-                new Date(status.date).toLocaleDateString('en-US', {
+                new Date(status.date + 'T12:00:00').toLocaleDateString('en-US', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
@@ -110,32 +110,44 @@
             );
         }
 
-        function Meter({ meterData, averageData }) {
-            const { daily_burn_rate } = meterData;
-            const formattedGoal = daily_burn_rate.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        function Meter({ averageData, dateRange, setDateRange }) {
+            const hasData = averageData && averageData.days > 0;
+            const avgNet = hasData ? averageData.average_net : 0;
+            const avgIncome = hasData ? averageData.average_income : 0;
+            const avgExpenses = hasData ? averageData.average_expenses : 0;
 
-            const avgNetProgress = averageData ? averageData.average - daily_burn_rate : 0;
-            const isAvgAhead = avgNetProgress >= 0;
-            const avgColorClass = isAvgAhead ? 'text-green-400' : 'text-red-400';
-            const formattedAvgProgress = Math.abs(avgNetProgress).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-            const avgStatusText = isAvgAhead ? 'Ahead of' : 'Behind';
+            const isPositive = avgNet >= 0;
+            const netColorClass = isPositive ? 'text-green-400' : 'text-red-400';
+            const netSign = isPositive ? '+' : '';
+            const formattedNet = avgNet.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            const formattedIncome = avgIncome.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            const formattedExpenses = avgExpenses.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
             return (
-                <div className="bg-gray-800 shadow rounded-lg p-6 mb-6">
-                    <h2 className="text-lg font-medium text-gray-300 mb-2">Progress Meter</h2>
-                    {averageData && averageData.days_with_data > 0 ? (
+                <div className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-lg font-medium text-gray-300">Daily Average</h2>
+                        <select
+                            value={dateRange}
+                            onChange={(e) => setDateRange(e.target.value)}
+                            className="bg-gray-700 text-white px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        >
+                            <option value="7">7 days</option>
+                            <option value="30">30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                    </div>
+                    {hasData ? (
                         <div>
-                            <h3 className="text-sm font-medium text-gray-400 mb-2">{averageData.days_with_data}-Day Average</h3>
-                            <div className="flex items-baseline">
-                                <p className={`text-4xl font-bold ${avgColorClass}`}>{formattedAvgProgress}</p>
-                                <p className="ml-2 text-gray-400">{avgStatusText} Goal</p>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">Avg daily net: {averageData.average.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
+                            <p className={`text-3xl font-bold ${netColorClass}`}>{netSign}{formattedNet}/day</p>
+                            <p className="text-sm text-gray-400 mt-1">
+                                Income: {formattedIncome} | Expenses: {formattedExpenses}
+                            </p>
                         </div>
                     ) : (
-                        <p className="text-gray-400">No transaction data yet. Start logging income and expenses to see your progress.</p>
+                        <p className="text-gray-400 text-sm">No transaction data yet.</p>
                     )}
-                    <p className="text-sm text-gray-500 mt-4 pt-4 border-t border-gray-700">Your daily goal is to net {formattedGoal} to cover recurring expenses.</p>
                 </div>
             );
         }
@@ -1286,10 +1298,9 @@
             );
         }
 
-        function DashboardPage({ showToast, status, setActivePage }) {
+        function DashboardPage({ showToast, status, setActivePage, dateRange, setDateRange }) {
             const [dashboardData, setDashboardData] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
-            const [dateRange, setDateRange] = useState('30');
             const [selectedWeekData, setSelectedWeekData] = useState(null);
             const [weekTransactions, setWeekTransactions] = useState([]);
             const [loadingTransactions, setLoadingTransactions] = useState(false);
@@ -1329,6 +1340,13 @@
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/dashboard?days=${dateRange}`);
                     if (!response.ok) throw new Error('Failed to fetch dashboard data');
                     const data = await response.json();
+                    console.log('Dashboard data received:', {
+                        dateRange: dateRange,
+                        total_income: data.total_income,
+                        total_expenses: data.total_expenses,
+                        net_income: data.net_income,
+                        period_days: data.period_days
+                    });
                     setDashboardData(data);
                 } catch (err) {
                     showToast('Error loading dashboard', 'error');
@@ -1807,12 +1825,12 @@
                         <select
                             value={dateRange}
                             onChange={(e) => setDateRange(e.target.value)}
-                            className="bg-gray-700 text-white px-4 py-2 rounded"
+                            className="bg-gray-700 text-white px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-cyan-500"
                         >
-                            <option value="7">Last 7 Days</option>
-                            <option value="30">Last 30 Days</option>
-                            <option value="90">Last 90 Days</option>
-                            <option value="365">Last Year</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="60">Last 60 days</option>
+                            <option value="90">Last 90 days</option>
                         </select>
                     </div>
 
@@ -2346,10 +2364,9 @@
             );
         }
 
-        function ExpenseAnalysisPage({ showToast, categories, onDataChange, status }) {
+        function ExpenseAnalysisPage({ showToast, categories, onDataChange, status, dateRange, setDateRange }) {
             const [analysisData, setAnalysisData] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
-            const [dateRange, setDateRange] = useState('30');
             const [totalExpenses, setTotalExpenses] = useState(0);
             const [editingColorCategoryId, setEditingColorCategoryId] = useState(null);
             const [editingColorValue, setEditingColorValue] = useState('');
@@ -2479,14 +2496,16 @@
                     <div className="bg-gray-800 shadow rounded-lg p-6">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-bold text-white">Expense Analysis</h2>
-                            <div className="flex items-center space-x-2">
-                                <span className="text-gray-400 text-sm">Period:</span>
-                                <select value={dateRange} onChange={(e) => setDateRange(e.target.value)} className="bg-gray-700 text-white px-3 py-1 rounded text-sm">
-                                    <option value="7">Last 7 days</option>
-                                    <option value="30">Last 30 days</option>
-                                    <option value="90">Last 90 days</option>
-                                </select>
-                            </div>
+                            <select
+                                value={dateRange}
+                                onChange={(e) => setDateRange(e.target.value)}
+                                className="bg-gray-700 text-white px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                                <option value="7">Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="60">Last 60 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
                         </div>
 
                         {isLoading ? (
@@ -2532,43 +2551,8 @@
                                                                 </div>
                                                             </div>
                                                             <span className="text-white font-medium">{cat.name}</span>
-                                                            {Boolean(categories.find(c => c.category_id === cat.category_id)?.is_monthly) && (
-                                                                <span className="ml-2 text-xs bg-purple-600 text-white px-2 py-0.5 rounded">Monthly</span>
-                                                            )}
                                                         </div>
-                                                        <div className="flex items-center space-x-4">
-                                                            <label className="flex items-center space-x-2 cursor-pointer" title="Check if this is a monthly recurring expense (like rent)">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={categories.find(c => c.category_id === cat.category_id)?.is_monthly || false}
-                                                                    onChange={async (e) => {
-                                                                        const category = categories.find(c => c.category_id === cat.category_id);
-                                                                        try {
-                                                                            const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories/${cat.category_id}`, {
-                                                                                method: 'PUT',
-                                                                                headers: { 'Content-Type': 'application/json' },
-                                                                                body: JSON.stringify({
-                                                                                    name: category.name,
-                                                                                    color: category.color,
-                                                                                    is_monthly: e.target.checked
-                                                                                })
-                                                                            });
-                                                                            if (response.ok) {
-                                                                                showToast(e.target.checked ? 'Set as monthly expense' : 'Set as variable expense', 'success');
-                                                                                onDataChange();
-                                                                                // Notify dashboard to refresh so charts reflect updated category settings
-                                                                                try { window.dispatchEvent(new Event('dashboard:refresh')); } catch (e) { /* ignore */ }
-                                                                            }
-                                                                        } catch (err) {
-                                                                            showToast('Error updating category', 'error');
-                                                                        }
-                                                                    }}
-                                                                    className="w-4 h-4 text-purple-600 bg-gray-600 border-gray-500 rounded focus:ring-purple-500"
-                                                                />
-                                                                <span className="text-xs text-gray-400">Monthly</span>
-                                                            </label>
-                                                            <span className="text-cyan-400 font-bold">${parseFloat(cat.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                                                        </div>
+                                                        <span className="text-cyan-400 font-bold">${parseFloat(cat.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                                     </div>
                                                     <div className="flex items-center justify-between text-sm">
                                                         <div className="flex-1 bg-gray-600 rounded-full h-2 mr-3">
@@ -4426,6 +4410,7 @@
             const [toast, setToast] = useState(null);
             const [showPendingModal, setShowPendingModal] = useState(false);
             const [pendingCount, setPendingCount] = useState(0);
+            const [dateRange, setDateRange] = useState('30');  // Global date range state
 
             const showToast = (message, type = 'info') => {
                 setToast({ message, type });
@@ -4453,7 +4438,7 @@
                         fetchWithCredentials(`${API_BASE_URL}/api/descriptions/expense`),
                         fetchWithCredentials(`${API_BASE_URL}/api/expense_categories`),
                         fetchWithCredentials(`${API_BASE_URL}/api/meter/summary`),
-                        fetchWithCredentials(`${API_BASE_URL}/api/meter/n_day_average?days=30`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/meter/n_day_average?days=${dateRange}`),
                         fetchWithCredentials(`${API_BASE_URL}/api/status`)
                     ]);
                     if (responses.some(res => !res.ok)) {
@@ -4479,8 +4464,10 @@
                     setExpenseDescriptions(expenseDescData);
                     setExpenseCategories(categoriesData);
                     setMeterData(meterSummaryData);
+                    console.log('Setting averageData:', averageDataResponse, 'for dateRange:', dateRange);
                     setAverageData(averageDataResponse);
                     setStatus(statusData);
+                    console.log('Status date:', statusData?.date);
                     // Also refresh pending transactions when data refreshes
                     loadPendingTransactions();
                 } catch (error) {
@@ -4539,6 +4526,14 @@
                 checkSession();
             }, []);
 
+            // Refresh data when date range changes
+            useEffect(() => {
+                if (username) {  // Only refresh if user is logged in
+                    console.log('Date range changed to:', dateRange, 'Refreshing data...');
+                    refreshData();
+                }
+            }, [dateRange]);
+
             if (error) { return <div className="text-red-400 p-8">Error: {error}</div>; }
 
             const navButtonClasses = (page) =>
@@ -4550,7 +4545,7 @@
                     <main>
                         {isLoading ? ( <LoadingSpinner text="Loading your financial data..." /> ) : (
                             <div>
-                                {meterData && <Meter meterData={meterData} averageData={averageData} />}
+                                {averageData && <Meter averageData={averageData} dateRange={dateRange} setDateRange={setDateRange} />}
                                 <BalanceSheetSummary accounts={accounts} />
                                 <div className="flex flex-wrap gap-2 mb-6 justify-between items-center">
                                     <div className="flex flex-wrap sm:flex-nowrap gap-2">
@@ -4579,7 +4574,7 @@
                                         <button onClick={() => setIsExpenseFormVisible(true)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-md">- Add Expense</button>
                                     </div>
                                 </div>
-                                {activePage === 'dashboard' && <DashboardPage showToast={showToast} status={status} setActivePage={setActivePage} />}
+                                {activePage === 'dashboard' && <DashboardPage showToast={showToast} status={status} setActivePage={setActivePage} dateRange={dateRange} setDateRange={setDateRange} />}
                                 {activePage === 'accounts' && <AccountsList accounts={accounts} onDataChange={refreshData} showToast={showToast} />}
                                 {activePage === 'ledger' && <LedgerView ledger={ledger} accounts={accounts} categories={expenseCategories} onDataChange={refreshData} showToast={showToast} accountFilter={ledgerAccountFilter} setAccountFilter={setLedgerAccountFilter} />}
                                 {activePage === 'recurring' && (
@@ -4589,7 +4584,7 @@
                                     </>
                                 )}
                                 {activePage === 'categories' && <CategoriesPage categories={expenseCategories} onDataChange={refreshData} showToast={showToast} />}
-                                {activePage === 'analysis' && <ExpenseAnalysisPage showToast={showToast} categories={expenseCategories} onDataChange={refreshData} status={status} />}
+                                {activePage === 'analysis' && <ExpenseAnalysisPage showToast={showToast} categories={expenseCategories} onDataChange={refreshData} status={status} dateRange={dateRange} setDateRange={setDateRange} />}
                                 {activePage === 'reports' && <FinancialReportsPage showToast={showToast} status={status} />}
                             </div>
                         )}

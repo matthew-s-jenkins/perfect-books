@@ -180,17 +180,17 @@ class BusinessSimulator:
         return conn, conn.cursor()
 
     def _get_user_current_date(self, cursor, user_id):
+        # Get the current_date from users table (set by advance_time)
         cursor.execute(
-            "SELECT MAX(transaction_date) AS last_date FROM financial_ledger WHERE user_id = ?",
+            "SELECT current_date FROM users WHERE user_id = ?",
             (user_id,)
         )
         result = self._row_to_dict(cursor.fetchone())
-        if result and result['last_date']:
-            # Ensure we return a date object (not datetime)
-            if isinstance(result['last_date'], datetime.datetime):
-                return result['last_date'].date()
-            return result['last_date']
-        return datetime.datetime.now().date()
+        if result and result['current_date']:
+            # Return as-is (string format expected by callers)
+            return result['current_date']
+        # Fallback to today's date if not set
+        return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # =============================================================================
     # USER AUTHENTICATION METHODS
@@ -500,10 +500,12 @@ class BusinessSimulator:
                     for entry in tx_entries:
                         if entry['account'] == account_filter:
                             filtered_entry_found = True
-                            if entry['debit'] and entry['debit'] > 0:
-                                running_balance -= float(entry['debit'])  # Reverse: subtract debits
-                            if entry['credit'] and entry['credit'] > 0:
-                                running_balance += float(entry['credit'])  # Reverse: add back credits
+                            debit_val = float(entry['debit']) if entry['debit'] else 0
+                            credit_val = float(entry['credit']) if entry['credit'] else 0
+                            if debit_val > 0:
+                                running_balance -= debit_val  # Reverse: subtract debits
+                            if credit_val > 0:
+                                running_balance += credit_val  # Reverse: add back credits
                             break
 
                     # Safety check: if no entry matched the filter, don't update running balance
@@ -851,98 +853,63 @@ class BusinessSimulator:
             current_date_str = self._get_user_current_date(cursor, user_id)
             current_date = self._from_datetime_str(current_date_str)
 
-            # Get the first transaction date to know how long the user has been playing
-            cursor.execute(
-                """SELECT MIN(DATE(transaction_date)) as first_date
-                   FROM financial_ledger
-                   WHERE user_id = ?
-                   AND description != 'Time Advanced'
-                   AND description != 'Initial Balance'""",
-                (user_id,)
+            # Calculate start date based on requested days parameter
+            start_date = current_date - datetime.timedelta(days=days - 1)  # -1 because we include today
+            # Use date-only format (YYYY-MM-DD) for DATE() comparisons
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            current_date_str_for_query = current_date.strftime('%Y-%m-%d')
+
+            query = """
+                SELECT
+                    DATE(transaction_date) as day,
+                    SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
+                    SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
+                FROM financial_ledger
+                WHERE user_id = ?
+                    AND DATE(transaction_date) BETWEEN ? AND ?
+                    AND is_reversal = 0
+                    AND description != 'Time Advanced'
+                    AND description != 'Initial Balance'
+                GROUP BY DATE(transaction_date)
+            """
+            cursor.execute(query, (user_id, start_date_str, current_date_str_for_query))
+            results = self._rows_to_dicts(cursor.fetchall())
+
+            if not results:
+                return {
+                    'average_net': 0.0,
+                    'average_income': 0.0,
+                    'average_expenses': 0.0,
+                    'total_net': 0.0,
+                    'total_income': 0.0,
+                    'total_expenses': 0.0,
+                    'days': days
+                }
+
+            total_income = sum(
+                self._from_money_str(row['total_income'])
+                for row in results
             )
-            first_date_result = self._row_to_dict(cursor.fetchone())
+            total_expenses = sum(
+                self._from_money_str(row['total_expenses'])
+                for row in results
+            )
+            total_net = total_income - total_expenses
 
-            if not first_date_result or not first_date_result['first_date']:
-                return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
+            # Divide by the requested number of days
+            average_income = float(total_income) / days if days > 0 else 0.0
+            average_expenses = float(total_expenses) / days if days > 0 else 0.0
+            average_net = float(total_net) / days if days > 0 else 0.0
 
-            first_date_str = first_date_result['first_date']
-            first_date = self._from_datetime_str(first_date_str)
-            days_since_start = (current_date - first_date).days + 1
-
-            # For the first 30 days, use all available data at 100% weight
-            if days_since_start <= 30:
-                query = """
-                    SELECT
-                        DATE(transaction_date) as day,
-                        SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
-                        SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
-                    FROM financial_ledger
-                    WHERE user_id = ?
-                        AND DATE(transaction_date) >= ?
-                        AND description != 'Time Advanced'
-                        AND description != 'Initial Balance'
-                    GROUP BY DATE(transaction_date)
-                """
-                cursor.execute(query, (user_id, first_date))
-                results = self._rows_to_dicts(cursor.fetchall())
-
-                if not results:
-                    return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
-
-                total_net = sum(
-                    self._from_money_str(row['total_income']) - self._from_money_str(row['total_expenses'])
-                    for row in results
-                )
-
-                # Use calendar days since start, not just days with transactions
-                average = float(total_net) / days_since_start if days_since_start > 0 else 0.0
-
-                return {
-                    'average': average,
-                    'days_with_data': days_since_start,
-                    'total_net': float(total_net),
-                    'weighted': False
-                }
-
-            # After 30 days, use the most recent 30 days at 100% weight
-            # TODO: Add weighted averaging for 31-60 and 61-90 days when implemented
-            else:
-                start_date = current_date - datetime.timedelta(days=29)  # Last 30 days including today
-                start_date_str = self._to_datetime_str(start_date)
-                current_date_str_for_query = self._to_datetime_str(current_date)
-
-                query = """
-                    SELECT
-                        DATE(transaction_date) as day,
-                        SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
-                        SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
-                    FROM financial_ledger
-                    WHERE user_id = ?
-                        AND DATE(transaction_date) BETWEEN ? AND ?
-                        AND description != 'Time Advanced'
-                        AND description != 'Initial Balance'
-                    GROUP BY DATE(transaction_date)
-                """
-                cursor.execute(query, (user_id, start_date_str, current_date_str_for_query))
-                results = self._rows_to_dicts(cursor.fetchall())
-
-                if not results:
-                    return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
-
-                total_net = sum(
-                    self._from_money_str(row['total_income']) - self._from_money_str(row['total_expenses'])
-                    for row in results
-                )
-
-                # Always divide by 30 calendar days, not just days with transactions
-                average = float(total_net) / 30.0
-
-                return {
-                    'average': average,
-                    'days_with_data': 30,
-                    'total_net': float(total_net),
-                    'weighted': False
-                }
+            return {
+                'average_net': average_net,
+                'average_income': average_income,
+                'average_expenses': average_expenses,
+                'total_net': float(total_net),
+                'total_income': float(total_income),
+                'total_expenses': float(total_expenses),
+                'days': days
+            }
         finally:
             cursor.close()
             conn.close()
@@ -2354,9 +2321,17 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             # Get the user's current date (last transaction date)
-            current_date = self._get_user_current_date(cursor, user_id)
+            current_date_raw = self._get_user_current_date(cursor, user_id)
             cursor.close()
             conn.close()
+
+            # Convert to date object if it's a string
+            if isinstance(current_date_raw, str):
+                current_date = self._from_datetime_str(current_date_raw)
+                if isinstance(current_date, datetime.datetime):
+                    current_date = current_date.date()
+            else:
+                current_date = current_date_raw
 
             # Get today's actual date
             today = datetime.datetime.now().date()
@@ -2574,12 +2549,13 @@ class BusinessSimulator:
         """Get dashboard summary data including stats and chart data."""
         conn, cursor = self._get_db_connection()
         try:
-            current_date_str = self._get_user_current_date(cursor, user_id)
-            current_date = self._from_datetime_str(current_date_str)
-            start_date = current_date - datetime.timedelta(days=days)
+            current_date_raw = self._get_user_current_date(cursor, user_id)
+            current_date = self._from_datetime_str(current_date_raw)
+            start_date = current_date - datetime.timedelta(days=days - 1)  # -1 to include today
             start_date_str = self._to_datetime_str(start_date)
+            current_date_str = self._to_datetime_str(current_date)  # Convert current_date back to string for query
 
-            # Get total income and expenses for the period (exclude reversals)
+            # Get total income and expenses for the period (exclude reversals and system entries)
             cursor.execute("""
                 SELECT
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as total_income,
@@ -2587,10 +2563,12 @@ class BusinessSimulator:
                 FROM financial_ledger
                 WHERE user_id = ? AND transaction_date BETWEEN ? AND ?
                     AND is_reversal = 0
+                    AND description != 'Time Advanced'
+                    AND description != 'Initial Balance'
             """, (user_id, start_date_str, current_date_str))
             totals = self._row_to_dict(cursor.fetchone())
 
-            # Get spending by category (exclude reversals)
+            # Get spending by category (exclude reversals and system entries)
             cursor.execute("""
                 SELECT c.name, c.color, SUM(l.debit) as amount
                 FROM financial_ledger l
@@ -2600,6 +2578,8 @@ class BusinessSimulator:
                     AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
                     AND l.is_reversal = 0
+                    AND l.description != 'Time Advanced'
+                    AND l.description != 'Initial Balance'
                 GROUP BY c.category_id, c.name, c.color
                 ORDER BY amount DESC
             """, (user_id, start_date_str, current_date_str))
