@@ -99,6 +99,16 @@ app.config['SESSION_COOKIE_SECURE'] = True
 # Enable CORS for web interface (allows requests from different origins)
 CORS(app, supports_credentials=True)
 
+# Initialize database if it doesn't exist (for Railway deployment)
+try:
+    from setup_sqlite import create_database, get_db_path
+except ModuleNotFoundError:
+    from src.setup_sqlite import create_database, get_db_path
+
+if not get_db_path().exists():
+    print("Database not found - creating fresh database...")
+    create_database()
+
 # Initialize the stateless business simulator
 try:
     sim = BusinessSimulator()
