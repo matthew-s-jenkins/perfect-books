@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -9,21 +10,52 @@ __pycache__/
 dist/
 build/
 *.spec
-.env.local
-.env.development
-*.log
-.DS_Store
-node_modules/
-electron/
 venv/
 env/
-dashboard_error.log
+*.log
+
+# Database files - NEVER commit user data!
+src/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Environment files with secrets
 .env
+.env.local
+.env.development
+railway_config.py
+
+# MySQL backup files (from migration)
+src/engine.py.mysql_backup
+*.sql
+
+# Migration files (contain user data exports)
+migrations/
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+
+# IDE
+.vscode/
+.idea/
+*.swp
 
 # Notes and documentation (private)
 notes/
 
-# Development scripts and database files (private)
+# Development scripts (private)
 scripts/
 db/
-nul
+electron/
+node_modules/
+
+# Test files
+test_*.py
+
+# Documentation files (temporary - remove later)
+MIGRATION_GUIDE.md
+PHASE1_COMPLETE.md

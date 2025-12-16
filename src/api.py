@@ -38,20 +38,7 @@ import datetime
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import os
 from dotenv import load_dotenv
-load_dotenv()
-
-# Debug: Print environment variables BEFORE importing engine
-print("=" * 60)
-print("ENVIRONMENT VARIABLES IN API.PY:")
-print(f"  DB_HOST: {os.getenv('DB_HOST')}")
-print(f"  DB_PORT: {os.getenv('DB_PORT')}")
-print(f"  DB_USER: {os.getenv('DB_USER')}")
-print(f"  DB_NAME: {os.getenv('DB_NAME')}")
-print(f"  DB_PASSWORD: {'***' if os.getenv('DB_PASSWORD') else 'NOT SET'}")
-print("=" * 60)
-
-# Load environment variables
-from dotenv import load_dotenv
+# Load environment variables (for SECRET_KEY, etc.)
 load_dotenv()
 
 # Import engine - handle both local dev and Railway deployment
@@ -139,7 +126,7 @@ class User(UserMixin):
 def load_user(user_id):
     if not sim: return None
     conn, cursor = sim._get_db_connection()
-    cursor.execute("SELECT user_id, username FROM users WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT user_id, username FROM users WHERE user_id = ?", (user_id,))
     user_data = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -1051,241 +1038,48 @@ def get_dashboard_data():
 # DATABASE INITIALIZATION (Railway only)
 # =============================================================================
 
+# =============================================================================
+# DATABASE INITIALIZATION ENDPOINTS (SQLite version)
+# =============================================================================
+# Note: These endpoints are for backwards compatibility with Railway deployment.
+# For SQLite, the database is auto-created on first run by setup_sqlite.py
+
 @app.route('/api/init_db', methods=['GET', 'POST'])
 def init_database():
-    """Initialize Railway database tables. Run this once after deployment."""
+    """Initialize database. For SQLite, the database is auto-created on startup."""
     try:
-        import mysql.connector
-        from railway_config import RAILWAY_DB_CONFIG
-        import os
-
-        # Read the SQL file from parent directory
-        sql_path = os.path.join(os.path.dirname(__file__), '..', 'railway_setup.sql')
-        with open(sql_path, 'r') as f:
-            sql_script = f.read()
-
-        # Connect and execute
-        conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
-        cursor = conn.cursor()
-
-        # Execute each statement separately
-        for statement in sql_script.split(';'):
-            if statement.strip():
-                cursor.execute(statement)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "Database initialized successfully!"})
+        from setup_sqlite import create_database
+        success = create_database()
+        if success:
+            return jsonify({"success": True, "message": "SQLite database initialized successfully!"})
+        else:
+            return jsonify({"success": False, "error": "Failed to create database"}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/rebuild_db', methods=['GET', 'POST'])
 def rebuild_database():
-    """DROP ALL tables and rebuild from scratch with correct schema."""
+    """DROP ALL tables and rebuild from scratch with correct schema (SQLite version)."""
     try:
-        import mysql.connector
-        from railway_config import RAILWAY_DB_CONFIG
-        import os
-
-        conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
-        cursor = conn.cursor()
-
-        # Drop all tables in correct order (reverse of creation due to foreign keys)
-        tables = ['pending_transactions', 'recurring_income', 'recurring_expenses',
-                  'financial_ledger', 'loans', 'expense_categories', 'accounts', 'users']
-
-        cursor.execute('SET FOREIGN_KEY_CHECKS = 0')
-        for table in tables:
-            cursor.execute(f'DROP TABLE IF EXISTS {table}')
-        cursor.execute('SET FOREIGN_KEY_CHECKS = 1')
-
-        # Read and execute the complete schema
-        sql_path = os.path.join(os.path.dirname(__file__), '..', 'railway_setup.sql')
-        with open(sql_path, 'r') as f:
-            sql_script = f.read()
-
-        for statement in sql_script.split(';'):
-            if statement.strip():
-                cursor.execute(statement)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "Database rebuilt successfully! All data cleared."})
+        from setup_sqlite import reset_database
+        success = reset_database()
+        if success:
+            return jsonify({"success": True, "message": "SQLite database rebuilt successfully! All data cleared."})
+        else:
+            return jsonify({"success": False, "error": "Failed to rebuild database"}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/migrate_db', methods=['GET', 'POST'])
 def migrate_database():
-    """Add missing columns to existing tables."""
+    """Run pending database migrations (SQLite version)."""
     try:
-        import mysql.connector
-        from railway_config import RAILWAY_DB_CONFIG
-
-        conn = mysql.connector.connect(**RAILWAY_DB_CONFIG)
-        cursor = conn.cursor()
-
-        # Check if transaction_date column exists
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'financial_ledger'
-            AND COLUMN_NAME = 'transaction_date'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            # Add transaction_date column if it doesn't exist
-            cursor.execute("""
-                ALTER TABLE financial_ledger
-                ADD COLUMN transaction_date DATE NULL
-                AFTER timestamp
-            """)
-
-        # Check and add legacy debit/credit/account columns for old code compatibility
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'financial_ledger'
-            AND COLUMN_NAME = 'debit'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                ALTER TABLE financial_ledger
-                ADD COLUMN debit DECIMAL(12,2) DEFAULT 0.00,
-                ADD COLUMN credit DECIMAL(12,2) DEFAULT 0.00,
-                ADD COLUMN account VARCHAR(100) NULL
-            """)
-
-        # Make new schema columns nullable only if they exist (for legacy code compatibility)
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'financial_ledger'
-            AND COLUMN_NAME = 'account_id'
-        """)
-
-        if cursor.fetchone()[0] > 0:
-            cursor.execute("""
-                ALTER TABLE financial_ledger
-                MODIFY COLUMN account_id INT NULL,
-                MODIFY COLUMN transaction_type ENUM('DEBIT', 'CREDIT') NULL,
-                MODIFY COLUMN amount DECIMAL(12,2) NULL
-            """)
-
-        # Add entry_id as alias for ledger_id (check if it exists first)
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'financial_ledger'
-            AND COLUMN_NAME = 'entry_id'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                ALTER TABLE financial_ledger
-                ADD COLUMN entry_id INT NULL
-            """)
-            # Copy ledger_id values to entry_id
-            cursor.execute("""
-                UPDATE financial_ledger SET entry_id = ledger_id
-            """)
-
-        # Add frequency column to recurring_expenses (legacy code uses ENUM instead of frequency_days)
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'recurring_expenses'
-            AND COLUMN_NAME = 'frequency'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                ALTER TABLE recurring_expenses
-                ADD COLUMN frequency ENUM('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY') NULL
-            """)
-
-        # Increase transaction_uuid length to accommodate full UUIDs with timestamps
-        cursor.execute("""
-            ALTER TABLE financial_ledger
-            MODIFY COLUMN transaction_uuid VARCHAR(100)
-        """)
-
-        # Create recurring_income table if it doesn't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS recurring_income (
-                income_id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                amount DECIMAL(12,2) NOT NULL,
-                frequency ENUM('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY') NOT NULL,
-                destination_account_id INT NOT NULL,
-                last_processed_date DATE NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-                FOREIGN KEY (destination_account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
-            ) ENGINE=InnoDB
-        """)
-
-        # Add description column to recurring_expenses if missing
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'recurring_expenses'
-            AND COLUMN_NAME = 'description'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                ALTER TABLE recurring_expenses
-                ADD COLUMN description VARCHAR(255) NULL,
-                ADD COLUMN payment_account_id INT NULL
-            """)
-
-        # Add description to recurring_income if missing
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'recurring_income'
-            AND COLUMN_NAME = 'description'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                ALTER TABLE recurring_income
-                ADD COLUMN description VARCHAR(255) NULL
-            """)
-
-        # Add is_monthly column to expense_categories if missing
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'railway'
-            AND TABLE_NAME = 'expense_categories'
-            AND COLUMN_NAME = 'is_monthly'
-        """)
-
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                ALTER TABLE expense_categories
-                ADD COLUMN is_monthly BOOLEAN DEFAULT FALSE AFTER color
-            """)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "message": "Database migrated successfully!"})
+        # For SQLite, migrations are handled by the migration_runner
+        # This endpoint is kept for backwards compatibility
+        return jsonify({
+            "success": True,
+            "message": "SQLite migrations are handled automatically on startup. No manual migration needed."
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

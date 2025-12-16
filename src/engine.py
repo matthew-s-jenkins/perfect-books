@@ -14,7 +14,7 @@ The simulator provides a complete personal finance management system with:
 - Time-based simulation for recurring transactions
 
 Key Design Principles:
-- **Stateless Architecture**: All state is stored in MySQL database
+- **Stateless Architecture**: All state is stored in SQLite database
 - **User Segregation**: Complete data isolation between users
 - **Security First**: Password hashing, user validation on all operations
 - **Audit Trail**: Immutable ledger with transaction UUIDs
@@ -26,44 +26,23 @@ Related Project: Digital Harvest (Business Simulation with similar accounting pr
 """
 
 import os
-from dotenv import load_dotenv
-import mysql.connector
+import sqlite3
 import datetime
 import time
 from decimal import Decimal
+from pathlib import Path
 import bcrypt
 
-# Load environment variables from .env file (for local development only)
-if os.path.exists('.env'):
-    load_dotenv()
-
 # --- DATABASE CONFIGURATION ---
-# Try environment variables first, fall back to railway_config.py if they're not set
-DB_CONFIG = {
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD'),
-    'host': os.getenv('DB_HOST'),
-    'port': int(os.getenv('DB_PORT', 3306)) if os.getenv('DB_PORT') else 3306,
-    'database': os.getenv('DB_NAME')
-}
+# SQLite database path (portable, no server needed)
+DB_PATH = Path(__file__).parent / "data" / "perfectbooks.db"
 
-# If environment variables aren't set, try loading Railway-specific config
-if not DB_CONFIG['host']:
-    try:
-        from railway_config import RAILWAY_DB_CONFIG
-        DB_CONFIG = RAILWAY_DB_CONFIG
-        print("Using railway_config.py (environment variables not available)")
-    except ImportError:
-        print("WARNING: No database configuration found!")
-
-# Debug: Print config on startup (hide password)
+# Debug: Print database location on startup
 print("=" * 60)
 print("DATABASE CONFIGURATION:")
-print(f"  Host: {DB_CONFIG['host']}")
-print(f"  Port: {DB_CONFIG['port']}")
-print(f"  User: {DB_CONFIG['user']}")
-print(f"  Database: {DB_CONFIG['database']}")
-print(f"  Password: {'***' if DB_CONFIG['password'] else 'NOT SET'}")
+print(f"  Database: SQLite (portable)")
+print(f"  Location: {DB_PATH}")
+print(f"  Exists: {DB_PATH.exists()}")
 print("=" * 60)
 
 
@@ -72,7 +51,7 @@ class BusinessSimulator:
     Stateless personal finance engine for Perfect Books.
 
     This class provides all business logic for the application without maintaining
-    state between method calls. All data is persisted in the MySQL database and
+    state between method calls. All data is persisted in the SQLite database and
     retrieved on demand.
 
     The simulator enforces user segregation - every method that accesses data requires
@@ -99,32 +78,113 @@ class BusinessSimulator:
         """Initialize the stateless simulator (no instance state needed)."""
         pass
 
+    # =============================================================================
+    # SQLITE HELPER METHODS
+    # =============================================================================
+
+    @staticmethod
+    def _to_money_str(value):
+        """Convert Decimal or float to string for SQLite storage"""
+        if value is None:
+            return None
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+        return str(value)
+
+    @staticmethod
+    def _from_money_str(value):
+        """Convert string from SQLite to Decimal for calculations"""
+        if value is None or value == '':
+            return Decimal('0.00')
+        return Decimal(str(value))
+
+    @staticmethod
+    def _to_bool_int(value):
+        """Convert Python boolean to SQLite integer (0/1)"""
+        return 1 if value else 0
+
+    @staticmethod
+    def _from_bool_int(value):
+        """Convert SQLite integer (0/1) to Python boolean"""
+        return bool(value)
+
+    @staticmethod
+    def _to_datetime_str(dt):
+        """Convert datetime object to SQLite TEXT format"""
+        if dt is None:
+            return None
+        if isinstance(dt, datetime.datetime):
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        if isinstance(dt, datetime.date):
+            return dt.strftime('%Y-%m-%d')
+        return str(dt)
+
+    @staticmethod
+    def _from_datetime_str(value):
+        """Convert SQLite TEXT to datetime object"""
+        if value is None or value == '':
+            return None
+        if isinstance(value, str):
+            # Try datetime format first
+            try:
+                return datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                # Try date-only format
+                try:
+                    return datetime.datetime.strptime(value, '%Y-%m-%d')
+                except ValueError:
+                    return None
+        return value
+
+    @staticmethod
+    def _row_to_dict(row):
+        """Convert sqlite3.Row to dictionary for JSON serialization"""
+        if row is None:
+            return None
+        return dict(row)
+
+    @staticmethod
+    def _rows_to_dicts(rows):
+        """Convert list of sqlite3.Row objects to list of dicts"""
+        return [dict(row) for row in rows]
+
+    # =============================================================================
+    # DATABASE CONNECTION
+    # =============================================================================
+
     def _get_db_connection(self):
         """
         Establish a new database connection.
 
         Returns:
-            tuple: (connection, cursor) - MySQL connection and dictionary cursor
+            tuple: (connection, cursor) - SQLite connection and cursor
 
         Note:
             Callers are responsible for closing the connection and cursor.
+            SQLite connections use Row factory for dictionary-style access.
         """
-        # Explicitly specify only the parameters we want (Python 3.13 compatibility)
-        conn = mysql.connector.connect(
-            user=DB_CONFIG['user'],
-            password=DB_CONFIG['password'],
-            host=DB_CONFIG['host'],
-            port=DB_CONFIG['port'],
-            database=DB_CONFIG['database']
-        )
-        return conn, conn.cursor(dictionary=True, buffered=True)
+        # Create data directory if it doesn't exist
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        # Connect to SQLite database
+        conn = sqlite3.connect(str(DB_PATH))
+
+        # Enable foreign key constraints (CRITICAL for data integrity)
+        conn.execute("PRAGMA foreign_keys = ON;")
+
+        # Use Row factory for dictionary-style access (like MySQL dictionary cursor)
+        conn.row_factory = sqlite3.Row
+
+        return conn, conn.cursor()
 
     def _get_user_current_date(self, cursor, user_id):
         cursor.execute(
-            "SELECT MAX(transaction_date) AS last_date FROM financial_ledger WHERE user_id = %s",
+            "SELECT MAX(transaction_date) AS last_date FROM financial_ledger WHERE user_id = ?",
             (user_id,)
         )
-        result = cursor.fetchone()
+        result = self._row_to_dict(cursor.fetchone())
         if result and result['last_date']:
             # Ensure we return a date object (not datetime)
             if isinstance(result['last_date'], datetime.datetime):
@@ -161,8 +221,8 @@ class BusinessSimulator:
         """
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("SELECT user_id, username, password_hash FROM users WHERE username = %s", (username,))
-            user_data = cursor.fetchone()
+            cursor.execute("SELECT user_id, username, password_hash FROM users WHERE username = ?", (username,))
+            user_data = self._row_to_dict(cursor.fetchone())
             if not user_data:
                 return None, "Invalid username or password."
 
@@ -208,8 +268,8 @@ class BusinessSimulator:
         """
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("SELECT user_id FROM users WHERE username = %s", (username,))
-            if cursor.fetchone():
+            cursor.execute("SELECT user_id FROM users WHERE username = ?", (username,))
+            if self._row_to_dict(cursor.fetchone()):
                 return False, "Username already exists.", None
 
             password_bytes = password.encode('utf-8')
@@ -217,7 +277,7 @@ class BusinessSimulator:
             password_hash = bcrypt.hashpw(password_bytes, salt)
 
             cursor.execute(
-                "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
                 (username, password_hash.decode('utf-8'))
             )
             new_user_id = cursor.lastrowid
@@ -238,7 +298,7 @@ class BusinessSimulator:
 
             for name, color, is_default in default_categories:
                 cursor.execute(
-                    "INSERT INTO expense_categories (user_id, name, color, is_default) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO expense_categories (user_id, name, color, is_default) VALUES (?, ?, ?, ?)",
                     (new_user_id, name, color, is_default)
                 )
 
@@ -254,8 +314,8 @@ class BusinessSimulator:
     def check_user_has_accounts(self, user_id):
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("SELECT 1 FROM accounts WHERE user_id = %s LIMIT 1", (user_id,))
-            return cursor.fetchone() is not None
+            cursor.execute("SELECT 1 FROM accounts WHERE user_id = ? LIMIT 1", (user_id,))
+            return self._row_to_dict(cursor.fetchone()) is not None
         finally:
             cursor.close()
             conn.close()
@@ -279,7 +339,7 @@ class BusinessSimulator:
 
             for name, color, is_default in default_categories:
                 cursor.execute(
-                    "INSERT INTO expense_categories (user_id, name, color, is_default) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO expense_categories (user_id, name, color, is_default) VALUES (?, ?, ?, ?)",
                     (user_id, name, color, is_default)
                 )
 
@@ -298,7 +358,7 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             accounts = self.get_accounts_list(user_id)
-            total_cash = sum(acc['balance'] for acc in accounts if acc['type'] in ['CHECKING', 'SAVINGS', 'CASH'])
+            total_cash = sum(self._from_money_str(acc['balance']) for acc in accounts if acc['type'] in ['CHECKING', 'SAVINGS', 'CASH'])
             current_date = self._get_user_current_date(cursor, user_id)
             summary = { 'cash': float(total_cash), 'date': current_date }
             return summary
@@ -309,8 +369,8 @@ class BusinessSimulator:
     def get_accounts_list(self, user_id):
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("SELECT * FROM accounts WHERE user_id = %s AND type != 'EQUITY' ORDER BY name", (user_id,))
-            return cursor.fetchall()
+            cursor.execute("SELECT * FROM accounts WHERE user_id = ? AND type != 'EQUITY' ORDER BY name", (user_id,))
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -338,15 +398,15 @@ class BusinessSimulator:
             date_conditions = []
             date_params = []
             if start_date:
-                date_conditions.append("transaction_date >= %s")
+                date_conditions.append("transaction_date >= ?")
                 date_params.append(start_date)
             if end_date:
-                date_conditions.append("transaction_date <= %s")
+                date_conditions.append("transaction_date <= ?")
                 date_params.append(end_date)
             date_filter = " AND " + " AND ".join(date_conditions) if date_conditions else ""
 
             # Build reversal filter condition
-            reversal_filter = "" if show_reversals else " AND is_reversal = FALSE"
+            reversal_filter = "" if show_reversals else " AND is_reversal = 0"
 
             if account_filter:
                 # When filtering by account, get all entries for transactions involving that account
@@ -358,16 +418,16 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT DISTINCT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter + reversal_filter +
+                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter +
                     "      AND transaction_uuid IN ( "
-                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = %s AND account = %s " + date_filter + reversal_filter +
+                    "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = ? AND account = ? " + date_filter + reversal_filter +
                     "      ) "
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
-                    "    LIMIT %s OFFSET %s "
+                    "    LIMIT ? OFFSET ? "
                     ") AS recent_t "
                     "ON l.transaction_uuid = recent_t.transaction_uuid "
-                    "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
+                    "WHERE l.user_id = ? ORDER BY l.transaction_date DESC, l.entry_id DESC"
                 )
                 params = [user_id] + date_params + [user_id, account_filter] + date_params + [transaction_limit, transaction_offset, user_id]
                 cursor.execute(query, params)
@@ -381,18 +441,18 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = %s AND description != 'Time Advanced' " + date_filter + reversal_filter +
+                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter +
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
-                    "    LIMIT %s OFFSET %s "
+                    "    LIMIT ? OFFSET ? "
                     ") AS recent_t "
                     "ON l.transaction_uuid = recent_t.transaction_uuid "
-                    "WHERE l.user_id = %s ORDER BY l.transaction_date DESC, l.entry_id DESC"
+                    "WHERE l.user_id = ? ORDER BY l.transaction_date DESC, l.entry_id DESC"
                 )
                 params = [user_id] + date_params + [transaction_limit, transaction_offset, user_id]
                 cursor.execute(query, params)
 
-            entries = cursor.fetchall()
+            entries = self._rows_to_dicts(cursor.fetchall())
 
             # If filtering by account, calculate running balance
             if account_filter and entries:
@@ -406,15 +466,15 @@ class BusinessSimulator:
                 # Calculate balance UP TO the most recent transaction shown (not all time)
                 # This ensures the running balance matches what's visible in the ledger
                 # Exclude reversals from balance calculation if show_reversals is False
-                balance_reversal_filter = "" if show_reversals else " AND is_reversal = FALSE"
+                balance_reversal_filter = "" if show_reversals else " AND is_reversal = 0"
                 cursor.execute(
                     "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance "
                     "FROM financial_ledger "
-                    "WHERE user_id = %s AND account = %s " + balance_reversal_filter +
-                    " AND (transaction_date < %s OR (transaction_date = %s AND entry_id <= %s))",
+                    "WHERE user_id = ? AND account = ? " + balance_reversal_filter +
+                    " AND (transaction_date < ? OR (transaction_date = ? AND entry_id <= ?))",
                     (user_id, account_filter, most_recent_date, most_recent_date, most_recent_entry_id)
                 )
-                current_balance = float(cursor.fetchone()['balance'] or 0)
+                current_balance = float(self._row_to_dict(cursor.fetchone())['balance'] or 0)
 
                 running_balance = current_balance
                 balance_map = {}  # Map entry_id to running balance
@@ -501,11 +561,11 @@ class BusinessSimulator:
                 FROM recurring_expenses r
                 JOIN accounts a ON r.payment_account_id = a.account_id
                 LEFT JOIN expense_categories c ON r.category_id = c.category_id
-                WHERE r.user_id = %s
+                WHERE r.user_id = ?
                 ORDER BY r.due_day_of_month, r.description
             """
             cursor.execute(query, (user_id,))
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -515,26 +575,28 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             # Get current user date
-            current_date = self._get_user_current_date(cursor, user_id)
+            current_date_str = self._get_user_current_date(cursor, user_id)
+            current_date = self._from_datetime_str(current_date_str)
             thirty_days_ago = current_date - datetime.timedelta(days=30)
+            thirty_days_ago_str = self._to_datetime_str(thirty_days_ago)
 
             base_query = """
                 SELECT DISTINCT description
                 FROM financial_ledger
-                WHERE user_id = %s
+                WHERE user_id = ?
                     AND description != ''
-                    AND is_reversal = FALSE
-                    AND transaction_date >= %s
+                    AND is_reversal = 0
+                    AND transaction_date >= ?
             """
 
             if transaction_type == 'income':
                 query = f"{base_query} AND account = 'Income' ORDER BY description"
-                cursor.execute(query, (user_id, thirty_days_ago))
+                cursor.execute(query, (user_id, thirty_days_ago_str))
             else:
                 query = f"{base_query} AND account = 'Expenses' ORDER BY description"
-                cursor.execute(query, (user_id, thirty_days_ago))
+                cursor.execute(query, (user_id, thirty_days_ago_str))
 
-            return [row['description'] for row in cursor.fetchall()]
+            return [row['description'] for row in self._rows_to_dicts(cursor.fetchall())]
         finally:
             cursor.close()
             conn.close()
@@ -542,9 +604,9 @@ class BusinessSimulator:
     def calculate_daily_burn_rate(self, user_id):
         conn, cursor = self._get_db_connection()
         try:
-            query = "SELECT SUM(amount) AS total_monthly FROM recurring_expenses WHERE user_id = %s AND frequency = 'MONTHLY'"
+            query = "SELECT SUM(amount) AS total_monthly FROM recurring_expenses WHERE user_id = ? AND frequency = 'MONTHLY'"
             cursor.execute(query, (user_id,))
-            result = cursor.fetchone()
+            result = self._row_to_dict(cursor.fetchone())
             if result and result['total_monthly']:
                 return float(Decimal(result['total_monthly']) / 30)
             return 0.0
@@ -558,10 +620,10 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                "SELECT category_id, name, color, is_default, is_monthly FROM expense_categories WHERE user_id = %s ORDER BY is_default DESC, name ASC",
+                "SELECT category_id, name, color, is_default, is_monthly FROM expense_categories WHERE user_id = ? ORDER BY is_default DESC, name ASC",
                 (user_id,)
             )
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -571,10 +633,10 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                "SELECT category_id FROM expense_categories WHERE user_id = %s AND is_default = TRUE LIMIT 1",
+                "SELECT category_id FROM expense_categories WHERE user_id = ? AND is_default = 1 LIMIT 1",
                 (user_id,)
             )
-            result = cursor.fetchone()
+            result = self._row_to_dict(cursor.fetchone())
             return result['category_id'] if result else None
         finally:
             cursor.close()
@@ -585,7 +647,7 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                "INSERT INTO expense_categories (user_id, name, color) VALUES (%s, %s, %s)",
+                "INSERT INTO expense_categories (user_id, name, color) VALUES (?, ?, ?)",
                 (user_id, name, color)
             )
             conn.commit()
@@ -604,15 +666,15 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                "SELECT user_id FROM expense_categories WHERE category_id = %s",
+                "SELECT user_id FROM expense_categories WHERE category_id = ?",
                 (category_id,)
             )
-            result = cursor.fetchone()
+            result = self._row_to_dict(cursor.fetchone())
             if not result or str(result['user_id']) != str(user_id):
                 return False, "Category not found or you don't have permission to edit it."
 
             cursor.execute(
-                "UPDATE expense_categories SET name = %s, color = %s, is_monthly = %s WHERE category_id = %s",
+                "UPDATE expense_categories SET name = ?, color = ?, is_monthly = ? WHERE category_id = ?",
                 (name, color, is_monthly, category_id)
             )
             conn.commit()
@@ -630,10 +692,10 @@ class BusinessSimulator:
         try:
             # Check ownership and if it's not the default
             cursor.execute(
-                "SELECT user_id, is_default FROM expense_categories WHERE category_id = %s",
+                "SELECT user_id, is_default FROM expense_categories WHERE category_id = ?",
                 (category_id,)
             )
-            result = cursor.fetchone()
+            result = self._row_to_dict(cursor.fetchone())
             if not result:
                 return False, "Category not found."
             if str(result['user_id']) != str(user_id):
@@ -646,13 +708,13 @@ class BusinessSimulator:
 
             # Reassign all transactions to default category
             cursor.execute(
-                "UPDATE financial_ledger SET category_id = %s WHERE user_id = %s AND category_id = %s",
+                "UPDATE financial_ledger SET category_id = ? WHERE user_id = ? AND category_id = ?",
                 (default_category_id, user_id, category_id)
             )
 
             # Delete the category
             cursor.execute(
-                "DELETE FROM expense_categories WHERE category_id = %s",
+                "DELETE FROM expense_categories WHERE category_id = ?",
                 (category_id,)
             )
             conn.commit()
@@ -670,17 +732,17 @@ class BusinessSimulator:
         try:
             # Verify the transaction belongs to the user and is an expense (has debit entry)
             cursor.execute(
-                "SELECT entry_id FROM financial_ledger WHERE user_id = %s AND transaction_uuid = %s AND debit > 0 LIMIT 1",
+                "SELECT entry_id FROM financial_ledger WHERE user_id = ? AND transaction_uuid = ? AND debit > 0 LIMIT 1",
                 (user_id, transaction_uuid)
             )
-            result = cursor.fetchone()
+            result = self._row_to_dict(cursor.fetchone())
 
             if not result:
                 return False, "Expense transaction not found or you don't have permission."
 
             # Update the category for all expense entries with this transaction_uuid
             cursor.execute(
-                "UPDATE financial_ledger SET category_id = %s WHERE user_id = %s AND transaction_uuid = %s AND debit > 0",
+                "UPDATE financial_ledger SET category_id = ? WHERE user_id = ? AND transaction_uuid = ? AND debit > 0",
                 (category_id, user_id, transaction_uuid)
             )
 
@@ -713,16 +775,16 @@ class BusinessSimulator:
                     COUNT(DISTINCT l.transaction_uuid) as transaction_count
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
-                    AND l.is_reversal = FALSE
+                    AND l.is_reversal = 0
                 GROUP BY c.category_id, c.name, c.color
                 ORDER BY total_amount DESC
             """
             cursor.execute(query, (user_id, start_date, end_date))
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -746,16 +808,16 @@ class BusinessSimulator:
                     SUM(l.debit) as amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
-                    AND l.is_reversal = FALSE
+                    AND l.is_reversal = 0
                 GROUP BY DATE(l.transaction_date), c.category_id, c.name, c.color
                 ORDER BY date, c.name
             """
             cursor.execute(query, (user_id, start_date, end_date))
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -772,10 +834,10 @@ class BusinessSimulator:
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
                 FROM financial_ledger
-                WHERE user_id = %s AND DATE(transaction_date) = %s
+                WHERE user_id = ? AND DATE(transaction_date) = ?
             """
             cursor.execute(query, (user_id, for_date))
-            result = cursor.fetchone()
+            result = self._row_to_dict(cursor.fetchone())
             total_income = result['total_income'] or Decimal('0.00')
             total_expenses = result['total_expenses'] or Decimal('0.00')
             return float(total_income - total_expenses)
@@ -786,24 +848,25 @@ class BusinessSimulator:
     def get_n_day_average(self, user_id, days=30, weighted=True):
         conn, cursor = self._get_db_connection()
         try:
-            current_date = self._get_user_current_date(cursor, user_id)
+            current_date_str = self._get_user_current_date(cursor, user_id)
+            current_date = self._from_datetime_str(current_date_str)
 
             # Get the first transaction date to know how long the user has been playing
             cursor.execute(
                 """SELECT MIN(DATE(transaction_date)) as first_date
                    FROM financial_ledger
-                   WHERE user_id = %s
+                   WHERE user_id = ?
                    AND description != 'Time Advanced'
                    AND description != 'Initial Balance'""",
                 (user_id,)
             )
-            first_date_result = cursor.fetchone()
+            first_date_result = self._row_to_dict(cursor.fetchone())
 
             if not first_date_result or not first_date_result['first_date']:
                 return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
 
-            first_date = first_date_result['first_date']
-            # current_date is already a date object, no need to call .date()
+            first_date_str = first_date_result['first_date']
+            first_date = self._from_datetime_str(first_date_str)
             days_since_start = (current_date - first_date).days + 1
 
             # For the first 30 days, use all available data at 100% weight
@@ -814,20 +877,20 @@ class BusinessSimulator:
                         SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
                         SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
                     FROM financial_ledger
-                    WHERE user_id = %s
-                        AND DATE(transaction_date) >= %s
+                    WHERE user_id = ?
+                        AND DATE(transaction_date) >= ?
                         AND description != 'Time Advanced'
                         AND description != 'Initial Balance'
                     GROUP BY DATE(transaction_date)
                 """
                 cursor.execute(query, (user_id, first_date))
-                results = cursor.fetchall()
+                results = self._rows_to_dicts(cursor.fetchall())
 
                 if not results:
                     return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
 
                 total_net = sum(
-                    (row['total_income'] or Decimal('0.00')) - (row['total_expenses'] or Decimal('0.00'))
+                    self._from_money_str(row['total_income']) - self._from_money_str(row['total_expenses'])
                     for row in results
                 )
 
@@ -845,6 +908,8 @@ class BusinessSimulator:
             # TODO: Add weighted averaging for 31-60 and 61-90 days when implemented
             else:
                 start_date = current_date - datetime.timedelta(days=29)  # Last 30 days including today
+                start_date_str = self._to_datetime_str(start_date)
+                current_date_str_for_query = self._to_datetime_str(current_date)
 
                 query = """
                     SELECT
@@ -852,21 +917,20 @@ class BusinessSimulator:
                         SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) AS total_income,
                         SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) AS total_expenses
                     FROM financial_ledger
-                    WHERE user_id = %s
-                        AND DATE(transaction_date) BETWEEN %s AND %s
+                    WHERE user_id = ?
+                        AND DATE(transaction_date) BETWEEN ? AND ?
                         AND description != 'Time Advanced'
                         AND description != 'Initial Balance'
                     GROUP BY DATE(transaction_date)
                 """
-                # start_date and current_date are already date objects
-                cursor.execute(query, (user_id, start_date, current_date))
-                results = cursor.fetchall()
+                cursor.execute(query, (user_id, start_date_str, current_date_str_for_query))
+                results = self._rows_to_dicts(cursor.fetchall())
 
                 if not results:
                     return {'average': 0.0, 'days_with_data': 0, 'total_net': 0.0, 'weighted': False}
 
                 total_net = sum(
-                    (row['total_income'] or Decimal('0.00')) - (row['total_expenses'] or Decimal('0.00'))
+                    self._from_money_str(row['total_income']) - self._from_money_str(row['total_expenses'])
                     for row in results
                 )
 
@@ -889,18 +953,18 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             # --- FIX: Ensure a single Equity account exists ---
-            cursor.execute("SELECT account_id, balance FROM accounts WHERE user_id = %s AND name = 'Equity'", (user_id,))
+            cursor.execute("SELECT account_id, balance FROM accounts WHERE user_id = ? AND name = 'Equity'", (user_id,))
             equity_account = cursor.fetchone()
             if not equity_account:
                 cursor.execute(
-                    "INSERT INTO accounts (user_id, name, type, balance) VALUES (%s, 'Equity', 'EQUITY', 0.00)",
+                    "INSERT INTO accounts (user_id, name, type, balance) VALUES (?, 'Equity', 'EQUITY', 0.00)",
                     (user_id,)
                 )
 
             now = datetime.datetime.now()
             for acc in accounts:
                 cursor.execute(
-                    "INSERT INTO accounts (user_id, name, type, balance, credit_limit) VALUES (%s, %s, %s, %s, %s)",
+                    "INSERT INTO accounts (user_id, name, type, balance, credit_limit) VALUES (?, ?, ?, ?, ?)",
                     (user_id, acc['name'], acc['type'], acc['balance'], acc.get('credit_limit'))
                 )
                 uuid = f"init-{user_id}-{int(time.time())}-{acc['name']}"
@@ -921,7 +985,7 @@ class BusinessSimulator:
         try:
             now = self._get_user_current_date(cursor, user_id)
             cursor.execute(
-                "INSERT INTO accounts (user_id, name, type, balance, credit_limit) VALUES (%s, %s, %s, %s, %s)",
+                "INSERT INTO accounts (user_id, name, type, balance, credit_limit) VALUES (?, ?, ?, ?, ?)",
                 (user_id, name, acc_type, balance, credit_limit)
             )
             uuid = f"add-{user_id}-{int(time.time())}-{name}"
@@ -938,7 +1002,7 @@ class BusinessSimulator:
             conn.close()
 
     def _create_initial_balance_entry(self, cursor, user_id, uuid, transaction_date, account_name, balance):
-        fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)"
         
         if balance >= 0:
             # Asset: Debit the asset account, Credit Equity
@@ -951,7 +1015,7 @@ class BusinessSimulator:
 
         # Update the balance of the single Equity account
         cursor.execute(
-            "UPDATE accounts SET balance = balance + %s WHERE user_id = %s AND name = 'Equity'",
+            "UPDATE accounts SET balance = balance + ? WHERE user_id = ? AND name = 'Equity'",
             (balance, user_id)
         )
 
@@ -959,14 +1023,14 @@ class BusinessSimulator:
     def update_account_name(self, user_id, account_id, new_name):
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("SELECT name FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
-            result = cursor.fetchone()
+            cursor.execute("SELECT name FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
+            result = self._row_to_dict(cursor.fetchone())
             if not result:
                 return False, "Account not found or you do not have permission to edit it."
             old_name = result['name']
 
-            cursor.execute("UPDATE accounts SET name = %s WHERE account_id = %s", (new_name, account_id))
-            cursor.execute("UPDATE financial_ledger SET account = %s WHERE user_id = %s AND account = %s", (new_name, user_id, old_name))
+            cursor.execute("UPDATE accounts SET name = ? WHERE account_id = ?", (new_name, account_id))
+            cursor.execute("UPDATE financial_ledger SET account = ? WHERE user_id = ? AND account = ?", (new_name, user_id, old_name))
 
             conn.commit()
             return True, f"Account '{old_name}' has been renamed to '{new_name}'."
@@ -980,8 +1044,8 @@ class BusinessSimulator:
     def delete_account(self, user_id, account_id):
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("SELECT name, balance FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
-            result = cursor.fetchone()
+            cursor.execute("SELECT name, balance FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
+            result = self._row_to_dict(cursor.fetchone())
             if not result:
                 return False, "Account not found or you do not have permission to delete it."
 
@@ -994,16 +1058,16 @@ class BusinessSimulator:
 
             # Check if account is used in any ledger entries
             cursor.execute(
-                "SELECT COUNT(*) as count FROM financial_ledger WHERE user_id = %s AND account = %s",
+                "SELECT COUNT(*) as count FROM financial_ledger WHERE user_id = ? AND account = ?",
                 (user_id, account_name)
             )
-            ledger_count = cursor.fetchone()['count']
+            ledger_count = self._row_to_dict(cursor.fetchone())['count']
 
             if ledger_count > 0:
                 return False, f"Cannot delete account '{account_name}'. It has {ledger_count} transaction(s) in the ledger. Accounts with history cannot be deleted."
 
             # Safe to delete
-            cursor.execute("DELETE FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
+            cursor.execute("DELETE FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
             conn.commit()
             return True, f"Account '{account_name}' has been deleted successfully."
         except Exception as e:
@@ -1018,10 +1082,10 @@ class BusinessSimulator:
         try:
             # Get current account info
             cursor.execute(
-                "SELECT name, balance, type FROM accounts WHERE account_id = %s AND user_id = %s",
+                "SELECT name, balance, type FROM accounts WHERE account_id = ? AND user_id = ?",
                 (account_id, user_id)
             )
-            account = cursor.fetchone()
+            account = self._row_to_dict(cursor.fetchone())
             if not account:
                 return False, "Account not found or you do not have permission to revalue it."
 
@@ -1044,27 +1108,27 @@ class BusinessSimulator:
             if difference > 0:
                 # Asset increased in value: Debit Asset, Credit Unrealized Gain (Equity)
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (user_id, uuid, current_date, account_name, description, abs(difference), 0)
                 )
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (user_id, uuid, current_date, 'Unrealized Gain', description, 0, abs(difference))
                 )
             else:
                 # Asset decreased in value: Credit Asset, Debit Unrealized Loss (Equity)
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (user_id, uuid, current_date, 'Unrealized Loss', description, abs(difference), 0)
                 )
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (user_id, uuid, current_date, account_name, description, 0, abs(difference))
                 )
 
             # Update account balance
             cursor.execute(
-                "UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s",
+                "UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?",
                 (new_value, account_id, user_id)
             )
 
@@ -1083,10 +1147,10 @@ class BusinessSimulator:
         try:
             # Get all entries for this transaction
             cursor.execute(
-                "SELECT * FROM financial_ledger WHERE user_id = %s AND transaction_uuid = %s ORDER BY entry_id",
+                "SELECT * FROM financial_ledger WHERE user_id = ? AND transaction_uuid = ? ORDER BY entry_id",
                 (user_id, transaction_uuid)
             )
-            entries = cursor.fetchall()
+            entries = self._rows_to_dicts(cursor.fetchall())
 
             if not entries:
                 return False, "Transaction not found or you do not have permission to reverse it."
@@ -1102,7 +1166,7 @@ class BusinessSimulator:
 
             for entry in entries:
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id, is_reversal, reversal_of_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id, is_reversal, reversal_of_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         user_id,
                         reversal_uuid,
@@ -1120,7 +1184,7 @@ class BusinessSimulator:
             # Mark the original transaction as reversed
             for entry in entries:
                 cursor.execute(
-                    "UPDATE financial_ledger SET description = %s, is_reversal = %s WHERE entry_id = %s AND user_id = %s",
+                    "UPDATE financial_ledger SET description = ?, is_reversal = ? WHERE entry_id = ? AND user_id = ?",
                     (f"REVERSED: {entry['description']}", True, entry['entry_id'], user_id)
                 )
 
@@ -1143,8 +1207,8 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             # Get all user accounts
-            cursor.execute("SELECT account_id, name FROM accounts WHERE user_id = %s", (user_id,))
-            accounts = cursor.fetchall()
+            cursor.execute("SELECT account_id, name FROM accounts WHERE user_id = ?", (user_id,))
+            accounts = self._rows_to_dicts(cursor.fetchall())
 
             updated = []
             for account in accounts:
@@ -1153,14 +1217,14 @@ class BusinessSimulator:
                 # Calculate balance from ledger
                 cursor.execute(
                     "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as ledger_balance "
-                    "FROM financial_ledger WHERE user_id = %s AND account = %s",
+                    "FROM financial_ledger WHERE user_id = ? AND account = ?",
                     (user_id, account_name)
                 )
-                ledger_balance = float(cursor.fetchone()['ledger_balance'] or 0)
+                ledger_balance = float(self._row_to_dict(cursor.fetchone())['ledger_balance'] or 0)
 
                 # Update account balance
                 cursor.execute(
-                    "UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s",
+                    "UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?",
                     (ledger_balance, account['account_id'], user_id)
                 )
                 updated.append(f"{account_name}: ${ledger_balance:.2f}")
@@ -1182,12 +1246,12 @@ class BusinessSimulator:
             amount = Decimal(amount)
             if amount <= 0: return False, "Income amount must be positive."
 
-            cursor.execute("SELECT * FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
-            account = cursor.fetchone()
+            cursor.execute("SELECT * FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
+            account = self._row_to_dict(cursor.fetchone())
             if not account:
                 return False, "Invalid account specified."
 
-            new_balance = account['balance'] + amount
+            new_balance = float(self._from_money_str(account['balance'])) + amount
 
             # If transaction_date is provided, use it; otherwise get current user date
             if transaction_date:
@@ -1204,11 +1268,11 @@ class BusinessSimulator:
 
             uuid = f"income-{user_id}-{int(time.time())}-{time.time()}"
 
-            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)"
             cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0))
             cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount))
 
-            cursor.execute("UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s", (new_balance, account_id, user_id))
+            cursor.execute("UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?", (new_balance, account_id, user_id))
             if conn: conn.commit()
             return True, f"Successfully logged income to '{account['name']}'."
 
@@ -1263,18 +1327,18 @@ class BusinessSimulator:
             if amount <= 0: return False, "Amount must be positive."
             if not 1 <= due_day_of_month <= 31: return False, "Due day must be between 1 and 31."
 
-            cursor.execute("SELECT 1 FROM accounts WHERE account_id = %s AND user_id = %s", (payment_account_id, user_id))
+            cursor.execute("SELECT 1 FROM accounts WHERE account_id = ? AND user_id = ?", (payment_account_id, user_id))
             if not cursor.fetchone():
                 return False, "Invalid payment account specified."
 
             # Validate category if provided
             if category_id:
-                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = %s AND user_id = %s", (category_id, user_id))
+                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = ? AND user_id = ?", (category_id, user_id))
                 if not cursor.fetchone():
                     return False, "Invalid category specified."
 
             cursor.execute(
-                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount) VALUES (%s, %s, %s, 'MONTHLY', %s, %s, %s, %s, %s)",
+                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount) VALUES (?, ?, ?, 'MONTHLY', ?, ?, ?, ?, ?)",
                 (user_id, description, amount, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount)
             )
             conn.commit()
@@ -1289,7 +1353,7 @@ class BusinessSimulator:
     def delete_recurring_expense(self, user_id, expense_id):
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("DELETE FROM recurring_expenses WHERE expense_id = %s AND user_id = %s", (expense_id, user_id))
+            cursor.execute("DELETE FROM recurring_expenses WHERE expense_id = ? AND user_id = ?", (expense_id, user_id))
             if cursor.rowcount == 0:
                 return False, "Expense not found or you do not have permission to delete it."
             
@@ -1316,11 +1380,11 @@ class BusinessSimulator:
                        a.name AS deposit_account_name
                 FROM recurring_income ri
                 JOIN accounts a ON ri.deposit_account_id = a.account_id
-                WHERE ri.user_id = %s
+                WHERE ri.user_id = ?
                 ORDER BY ri.deposit_day_of_month, ri.description
             """
             cursor.execute(query, (user_id,))
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -1337,7 +1401,7 @@ class BusinessSimulator:
 
             cursor.execute(
                 "INSERT INTO recurring_income (user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable, estimated_amount) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable, estimated_amount)
             )
             conn.commit()
@@ -1353,7 +1417,7 @@ class BusinessSimulator:
         """Delete a recurring income entry."""
         conn, cursor = self._get_db_connection()
         try:
-            cursor.execute("DELETE FROM recurring_income WHERE income_id = %s AND user_id = %s", (income_id, user_id))
+            cursor.execute("DELETE FROM recurring_income WHERE income_id = ? AND user_id = ?", (income_id, user_id))
             if cursor.rowcount == 0:
                 return False, "Income not found or you do not have permission to delete it."
 
@@ -1377,14 +1441,14 @@ class BusinessSimulator:
                 return False, "Deposit day must be between 1 and 31."
 
             # Debug: Check if the record exists first
-            cursor.execute("SELECT income_id, user_id FROM recurring_income WHERE income_id = %s", (income_id,))
-            existing = cursor.fetchone()
+            cursor.execute("SELECT income_id, user_id FROM recurring_income WHERE income_id = ?", (income_id,))
+            existing = self._row_to_dict(cursor.fetchone())
             print(f"DEBUG update_recurring_income: Looking for income_id={income_id}, user_id={user_id}")
             print(f"DEBUG update_recurring_income: Found record: {existing}")
 
             cursor.execute(
-                "UPDATE recurring_income SET description = %s, amount = %s, deposit_day_of_month = %s, is_variable = %s, estimated_amount = %s "
-                "WHERE income_id = %s AND user_id = %s",
+                "UPDATE recurring_income SET description = ?, amount = ?, deposit_day_of_month = ?, is_variable = ?, estimated_amount = ? "
+                "WHERE income_id = ? AND user_id = ?",
                 (description, amount, deposit_day_of_month, is_variable, estimated_amount, income_id, user_id)
             )
 
@@ -1417,8 +1481,8 @@ class BusinessSimulator:
             if not 1 <= due_day_of_month <= 31: return False, "Due day must be between 1 and 31."
 
             # Check if expense exists and belongs to this user
-            cursor.execute("SELECT user_id FROM recurring_expenses WHERE expense_id = %s", (expense_id,))
-            existing = cursor.fetchone()
+            cursor.execute("SELECT user_id FROM recurring_expenses WHERE expense_id = ?", (expense_id,))
+            existing = self._row_to_dict(cursor.fetchone())
 
             if not existing:
                 return False, "Expense not found."
@@ -1428,8 +1492,8 @@ class BusinessSimulator:
 
             # Validate category if provided
             if category_id:
-                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = %s AND user_id = %s", (category_id, user_id))
-                if not cursor.fetchone():
+                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = ? AND user_id = ?", (category_id, user_id))
+                if not self._row_to_dict(cursor.fetchone()):
                     return False, "Invalid category specified."
 
             # Convert estimated_amount if provided
@@ -1438,7 +1502,7 @@ class BusinessSimulator:
 
             # Perform the update
             cursor.execute(
-                "UPDATE recurring_expenses SET description = %s, amount = %s, due_day_of_month = %s, category_id = %s, is_variable = %s, estimated_amount = %s WHERE expense_id = %s AND user_id = %s",
+                "UPDATE recurring_expenses SET description = ?, amount = ?, due_day_of_month = ?, category_id = ?, is_variable = ?, estimated_amount = ? WHERE expense_id = ? AND user_id = ?",
                 (description, amount, due_day_of_month, category_id, is_variable, estimated_amount, expense_id, user_id)
             )
 
@@ -1462,10 +1526,10 @@ class BusinessSimulator:
 
             # Get both accounts
             cursor.execute(
-                "SELECT * FROM accounts WHERE account_id IN (%s, %s) AND user_id = %s",
+                "SELECT * FROM accounts WHERE account_id IN (?, ?) AND user_id = ?",
                 (from_account_id, to_account_id, user_id)
             )
-            accounts = cursor.fetchall()
+            accounts = self._rows_to_dicts(cursor.fetchall())
 
             if len(accounts) != 2:
                 return False, "One or both accounts not found or you don't have permission."
@@ -1500,17 +1564,17 @@ class BusinessSimulator:
             uuid = f"transfer-{user_id}-{int(time.time())}-{time.time()}"
 
             # Record the transfer in the ledger (debit to_account, credit from_account)
-            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)"
             cursor.execute(fin_query, (user_id, uuid, current_date, to_account['name'], description, amount, 0))
             cursor.execute(fin_query, (user_id, uuid, current_date, from_account['name'], description, 0, amount))
 
             # Update account balances
             cursor.execute(
-                "UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s",
+                "UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?",
                 (new_from_balance, from_account_id, user_id)
             )
             cursor.execute(
-                "UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s",
+                "UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?",
                 (new_to_balance, to_account_id, user_id)
             )
 
@@ -1532,7 +1596,7 @@ class BusinessSimulator:
             amount = Decimal(amount)
             if amount <= 0: return False, "Expense amount must be positive."
 
-            cursor.execute("SELECT * FROM accounts WHERE account_id = %s AND user_id = %s", (account_id, user_id))
+            cursor.execute("SELECT * FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
             account = cursor.fetchone()
             if not account: return False, "Invalid account specified."
 
@@ -1563,11 +1627,11 @@ class BusinessSimulator:
 
             uuid = f"expense-{user_id}-{int(time.time())}-{time.time()}"
 
-            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             cursor.execute(fin_query, (user_id, uuid, current_date, 'Expenses', description, amount, 0, category_id))
             cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, 0, amount, None))
 
-            cursor.execute("UPDATE accounts SET balance = %s WHERE account_id = %s AND user_id = %s", (new_balance, account_id, user_id))
+            cursor.execute("UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?", (new_balance, account_id, user_id))
 
             if conn: # Only commit if this function owns the connection
                 conn.commit()
@@ -1611,11 +1675,11 @@ class BusinessSimulator:
                 FROM pending_transactions p
                 JOIN accounts a ON p.payment_account_id = a.account_id
                 LEFT JOIN expense_categories c ON p.category_id = c.category_id
-                WHERE p.user_id = %s AND p.status = 'PENDING'
+                WHERE p.user_id = ? AND p.status = 'PENDING'
                 ORDER BY p.due_date ASC
             """
             cursor.execute(query, (user_id,))
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -1639,10 +1703,10 @@ class BusinessSimulator:
             # Get pending transaction
             cursor.execute("""
                 SELECT * FROM pending_transactions
-                WHERE pending_id = %s AND user_id = %s AND status = 'PENDING'
+                WHERE pending_id = ? AND user_id = ? AND status = 'PENDING'
             """, (pending_id, user_id))
 
-            pending = cursor.fetchone()
+            pending = self._row_to_dict(cursor.fetchone())
             if not pending:
                 return False, "Pending transaction not found."
 
@@ -1682,45 +1746,45 @@ class BusinessSimulator:
                 txn_uuid = str(uuid4())
 
                 # Get account name
-                cursor.execute("SELECT name FROM accounts WHERE account_id = %s",
+                cursor.execute("SELECT name FROM accounts WHERE account_id = ?",
                              (pending['related_account_id'],))
-                card_account = cursor.fetchone()
+                card_account = self._row_to_dict(cursor.fetchone())
 
                 # DR Interest Expense
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, 'Interest Expense', %s, %s, 0, NULL)
+                    VALUES (?, ?, ?, 'Interest Expense', ?, ?, 0, NULL)
                 """, (user_id, txn_uuid, pending['due_date'], pending['description'], actual_amount))
 
                 # CR Credit Card (increases debt)
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, NULL)
                 """, (user_id, txn_uuid, pending['due_date'], card_account['name'],
                      pending['description'], actual_amount))
 
                 # Update account balance
                 cursor.execute("""
                     UPDATE accounts
-                    SET balance = balance - %s, last_interest_date = %s
-                    WHERE account_id = %s
+                    SET balance = balance - ?, last_interest_date = ?
+                    WHERE account_id = ?
                 """, (actual_amount, pending['due_date'], pending['related_account_id']))
 
             # Update pending transaction
             cursor.execute("""
                 UPDATE pending_transactions
-                SET status = 'APPROVED', actual_amount = %s, resolved_at = NOW()
-                WHERE pending_id = %s
+                SET status = 'APPROVED', actual_amount = ?, resolved_at = datetime('now')
+                WHERE pending_id = ?
             """, (actual_amount, pending_id))
 
             # Update recurring expense last_processed_date if applicable
             if pending['recurring_expense_id']:
                 cursor.execute("""
                     UPDATE recurring_expenses
-                    SET last_processed_date = %s
-                    WHERE expense_id = %s
+                    SET last_processed_date = ?
+                    WHERE expense_id = ?
                 """, (pending['due_date'], pending['recurring_expense_id']))
 
             conn.commit()
@@ -1748,8 +1812,8 @@ class BusinessSimulator:
         try:
             cursor.execute("""
                 UPDATE pending_transactions
-                SET status = 'REJECTED', resolved_at = NOW()
-                WHERE pending_id = %s AND user_id = %s AND status = 'PENDING'
+                SET status = 'REJECTED', resolved_at = datetime('now')
+                WHERE pending_id = ? AND user_id = ? AND status = 'PENDING'
             """, (pending_id, user_id))
 
             if cursor.rowcount == 0:
@@ -1799,16 +1863,16 @@ class BusinessSimulator:
             cursor.execute("""
                 SELECT account_id, name, balance, type
                 FROM accounts
-                WHERE account_id = %s AND user_id = %s AND type IN ('LOAN', 'CREDIT_CARD')
+                WHERE account_id = ? AND user_id = ? AND type IN ('LOAN', 'CREDIT_CARD')
             """, (loan_id, user_id))
 
-            loan_account = cursor.fetchone()
+            loan_account = self._row_to_dict(cursor.fetchone())
             if not loan_account:
                 return False, "Loan or credit card account not found."
 
             # Get payment account name
-            cursor.execute("SELECT name FROM accounts WHERE account_id = %s", (payment_account_id,))
-            payment_acct = cursor.fetchone()
+            cursor.execute("SELECT name FROM accounts WHERE account_id = ?", (payment_account_id,))
+            payment_acct = self._row_to_dict(cursor.fetchone())
             if not payment_acct:
                 return False, "Payment account not found."
 
@@ -1818,13 +1882,13 @@ class BusinessSimulator:
             # Get Interest Expense category (create if doesn't exist)
             cursor.execute("""
                 SELECT category_id FROM expense_categories
-                WHERE user_id = %s AND name = 'Interest Expense'
+                WHERE user_id = ? AND name = 'Interest Expense'
             """, (user_id,))
-            interest_cat = cursor.fetchone()
+            interest_cat = self._row_to_dict(cursor.fetchone())
             if not interest_cat:
                 cursor.execute("""
                     INSERT INTO expense_categories (user_id, name, color, is_default, is_monthly)
-                    VALUES (%s, 'Interest Expense', '#ef4444', FALSE, TRUE)
+                    VALUES (?, 'Interest Expense', '#ef4444', 0, 1)
                 """, (user_id,))
                 interest_category_id = cursor.lastrowid
             else:
@@ -1844,14 +1908,14 @@ class BusinessSimulator:
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
+                    VALUES (?, ?, ?, 'Expenses', ?, ?, 0, ?)
                 """, (user_id, interest_uuid, payment_date, f"{loan_account['name']} - Interest",
                       interest_amount, interest_category_id))
                 # CR Payment Account
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, NULL)
                 """, (user_id, interest_uuid, payment_date, payment_acct['name'],
                       f"{loan_account['name']} - Interest", interest_amount))
 
@@ -1862,13 +1926,13 @@ class BusinessSimulator:
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, %s, 'Payment - Principal', %s, 0, NULL)
+                    VALUES (?, ?, ?, ?, 'Payment - Principal', ?, 0, NULL)
                 """, (user_id, principal_uuid, payment_date, loan_account['name'], principal_amount))
                 # CR Payment Account
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, %s, 'Payment - Principal', 0, %s, NULL)
+                    VALUES (?, ?, ?, ?, 'Payment - Principal', 0, ?, NULL)
                 """, (user_id, principal_uuid, payment_date, payment_acct['name'], principal_amount))
 
             # 3. Escrow transaction (DR Expenses, CR Payment Account)
@@ -1877,13 +1941,13 @@ class BusinessSimulator:
                 # Get or create Escrow/Housing category
                 cursor.execute("""
                     SELECT category_id FROM expense_categories
-                    WHERE user_id = %s AND name = 'Escrow/Housing'
+                    WHERE user_id = ? AND name = 'Escrow/Housing'
                 """, (user_id,))
-                escrow_cat = cursor.fetchone()
+                escrow_cat = self._row_to_dict(cursor.fetchone())
                 if not escrow_cat:
                     cursor.execute("""
                         INSERT INTO expense_categories (user_id, name, color, is_default, is_monthly)
-                        VALUES (%s, 'Escrow/Housing', '#3b82f6', FALSE, TRUE)
+                        VALUES (?, 'Escrow/Housing', '#3b82f6', 0, 1)
                     """, (user_id,))
                     escrow_category_id = cursor.lastrowid
                 else:
@@ -1893,14 +1957,14 @@ class BusinessSimulator:
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
+                    VALUES (?, ?, ?, 'Expenses', ?, ?, 0, ?)
                 """, (user_id, escrow_uuid, payment_date, f"{loan_account['name']} - Escrow",
                       escrow_amount, escrow_category_id))
                 # CR Payment Account
                 cursor.execute("""
                     INSERT INTO financial_ledger
                     (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                    VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, NULL)
                 """, (user_id, escrow_uuid, payment_date, payment_acct['name'],
                       f"{loan_account['name']} - Escrow", escrow_amount))
 
@@ -1909,13 +1973,13 @@ class BusinessSimulator:
                 # Get or create Fees category
                 cursor.execute("""
                     SELECT category_id FROM expense_categories
-                    WHERE user_id = %s AND name = 'Fees & Charges'
+                    WHERE user_id = ? AND name = 'Fees & Charges'
                 """, (user_id,))
-                fees_cat = cursor.fetchone()
+                fees_cat = self._row_to_dict(cursor.fetchone())
                 if not fees_cat:
                     cursor.execute("""
                         INSERT INTO expense_categories (user_id, name, color, is_default, is_monthly)
-                        VALUES (%s, 'Fees & Charges', '#f59e0b', FALSE, TRUE)
+                        VALUES (?, 'Fees & Charges', '#f59e0b', 0, 1)
                     """, (user_id,))
                     fees_category_id = cursor.lastrowid
                 else:
@@ -1929,30 +1993,30 @@ class BusinessSimulator:
                         cursor.execute("""
                             INSERT INTO financial_ledger
                             (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                            VALUES (%s, %s, %s, 'Expenses', %s, %s, 0, %s)
+                            VALUES (?, ?, ?, 'Expenses', ?, ?, 0, ?)
                         """, (user_id, fee_uuid, payment_date, f"{loan_account['name']} - {item['label']}",
                               amount, fees_category_id))
                         # CR Payment Account
                         cursor.execute("""
                             INSERT INTO financial_ledger
                             (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id)
-                            VALUES (%s, %s, %s, %s, %s, 0, %s, NULL)
+                            VALUES (?, ?, ?, ?, ?, 0, ?, NULL)
                         """, (user_id, fee_uuid, payment_date, payment_acct['name'],
                               f"{loan_account['name']} - {item['label']}", amount))
 
             # Update account balances
             # Principal reduces the loan/credit card balance (increases it since it's negative)
             if principal_amount > 0:
-                cursor.execute("UPDATE accounts SET balance = balance + %s WHERE account_id = %s",
+                cursor.execute("UPDATE accounts SET balance = balance + ? WHERE account_id = ?",
                               (principal_amount, loan_id))
 
             # Total payment reduces cash account
-            cursor.execute("UPDATE accounts SET balance = balance - %s WHERE account_id = %s",
+            cursor.execute("UPDATE accounts SET balance = balance - ? WHERE account_id = ?",
                           (total_payment, payment_account_id))
 
             # Fetch new loan balance
-            cursor.execute("SELECT balance FROM accounts WHERE account_id = %s", (loan_id,))
-            new_balance = abs(cursor.fetchone()['balance'])
+            cursor.execute("SELECT balance FROM accounts WHERE account_id = ?", (loan_id,))
+            new_balance = abs(self._row_to_dict(cursor.fetchone())['balance'])
 
             conn.commit()
 
@@ -1999,10 +2063,10 @@ class BusinessSimulator:
                 SELECT payment_date, total_payment, principal_amount,
                        interest_amount, remaining_balance
                 FROM loan_payments
-                WHERE loan_id = %s AND user_id = %s
+                WHERE loan_id = ? AND user_id = ?
                 ORDER BY payment_date DESC
             """, (loan_id, user_id))
-            return cursor.fetchall()
+            return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
@@ -2034,16 +2098,17 @@ class BusinessSimulator:
 
             cursor.execute("""
                 SELECT * FROM accounts
-                WHERE account_id = %s AND user_id = %s AND type = 'CREDIT_CARD'
+                WHERE account_id = ? AND user_id = ? AND type = 'CREDIT_CARD'
             """, (card_account_id, user_id))
 
-            card = cursor.fetchone()
+            card = self._row_to_dict(cursor.fetchone())
             if not card:
                 return False, "Credit card account not found."
 
             # Check if interest is due
             if card['last_interest_date']:
-                days_since = (current_date - card['last_interest_date']).days
+                last_interest_date = self._from_datetime_str(card['last_interest_date'])
+                days_since = (self._from_datetime_str(current_date) - last_interest_date).days
                 if days_since < 30:
                     return False, f"Interest not yet due. Last charged {days_since} days ago."
 
@@ -2062,7 +2127,7 @@ class BusinessSimulator:
                 INSERT INTO pending_transactions
                 (user_id, recurring_expense_id, description, estimated_amount,
                  due_date, payment_account_id, category_id, status, transaction_type, related_account_id)
-                VALUES (%s, NULL, %s, %s, CURDATE(), %s, NULL, 'PENDING', 'INTEREST', %s)
+                VALUES (?, NULL, ?, ?, date('now'), ?, NULL, 'PENDING', 'INTEREST', ?)
             """, (
                 user_id,
                 f"Interest Charge - {card['name']}",
@@ -2093,11 +2158,11 @@ class BusinessSimulator:
             processing_log = []
 
             # Fetch recurring expenses and income ONCE before the loop
-            cursor.execute("SELECT * FROM recurring_expenses WHERE user_id = %s", (user_id,))
-            recurring_expenses = cursor.fetchall()
+            cursor.execute("SELECT * FROM recurring_expenses WHERE user_id = ?", (user_id,))
+            recurring_expenses = self._rows_to_dicts(cursor.fetchall())
 
-            cursor.execute("SELECT * FROM recurring_income WHERE user_id = %s", (user_id,))
-            recurring_income = cursor.fetchall()
+            cursor.execute("SELECT * FROM recurring_income WHERE user_id = ?", (user_id,))
+            recurring_income = self._rows_to_dicts(cursor.fetchall())
 
             for i in range(days_to_advance):
                 current_day = simulation_start_date + datetime.timedelta(days=i + 1)
@@ -2131,23 +2196,24 @@ class BusinessSimulator:
                                     INSERT INTO pending_transactions
                                     (user_id, recurring_expense_id, description, estimated_amount,
                                      due_date, payment_account_id, category_id, status, transaction_type)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', 'EXPENSE')
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'EXPENSE')
                                 """, (
                                     user_id,
                                     expense['expense_id'],
                                     expense['description'],
                                     expense.get('estimated_amount') or expense['amount'],
-                                    current_day,
+                                    self._to_datetime_str(current_day),
                                     expense['payment_account_id'],
                                     expense.get('category_id')
                                 ))
 
                                 # Update last_processed_date so it doesn't create duplicate pending transactions
+                                current_day_str = self._to_datetime_str(current_day)
                                 cursor.execute(
-                                    "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
-                                    (current_day, expense['expense_id'])
+                                    "UPDATE recurring_expenses SET last_processed_date = ? WHERE expense_id = ?",
+                                    (current_day_str, expense['expense_id'])
                                 )
-                                expense['last_processed_date'] = current_day
+                                expense['last_processed_date'] = current_day_str
                                 processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: {expense['description']} requires approval (variable expense)")
                             else:
                                 # AUTO-PAY as before (existing code)
@@ -2162,12 +2228,13 @@ class BusinessSimulator:
                                 )
 
                                 if success:
+                                    current_day_str = self._to_datetime_str(current_day)
                                     cursor.execute(
-                                        "UPDATE recurring_expenses SET last_processed_date = %s WHERE expense_id = %s",
-                                        (current_day, expense['expense_id'])
+                                        "UPDATE recurring_expenses SET last_processed_date = ? WHERE expense_id = ?",
+                                        (current_day_str, expense['expense_id'])
                                     )
                                     # Update the in-memory record to prevent re-payment in the same run
-                                    expense['last_processed_date'] = current_day
+                                    expense['last_processed_date'] = current_day_str
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Paid {expense['description']} (${expense['amount']}).")
                                 else:
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to pay {expense['description']} - {message}")
@@ -2198,22 +2265,23 @@ class BusinessSimulator:
                                     INSERT INTO pending_transactions
                                     (user_id, recurring_income_id, description, estimated_amount,
                                      due_date, payment_account_id, status, transaction_type)
-                                    VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', 'INCOME')
+                                    VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 'INCOME')
                                 """, (
                                     user_id,
                                     income['income_id'],
                                     income['description'],
                                     income.get('estimated_amount') or income['amount'],
-                                    current_day,
+                                    self._to_datetime_str(current_day),
                                     income['deposit_account_id']
                                 ))
 
                                 # Update last_processed_date so it doesn't create duplicate pending transactions
+                                current_day_str = self._to_datetime_str(current_day)
                                 cursor.execute(
-                                    "UPDATE recurring_income SET last_processed_date = %s WHERE income_id = %s",
-                                    (current_day, income['income_id'])
+                                    "UPDATE recurring_income SET last_processed_date = ? WHERE income_id = ?",
+                                    (current_day_str, income['income_id'])
                                 )
-                                income['last_processed_date'] = current_day
+                                income['last_processed_date'] = current_day_str
                                 processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: {income['description']} requires approval (variable income)")
                             else:
                                 # AUTO-DEPOSIT as before
@@ -2227,11 +2295,12 @@ class BusinessSimulator:
                                 )
 
                                 if success:
+                                    current_day_str = self._to_datetime_str(current_day)
                                     cursor.execute(
-                                        "UPDATE recurring_income SET last_processed_date = %s WHERE income_id = %s",
-                                        (current_day, income['income_id'])
+                                        "UPDATE recurring_income SET last_processed_date = ? WHERE income_id = ?",
+                                        (current_day_str, income['income_id'])
                                     )
-                                    income['last_processed_date'] = current_day
+                                    income['last_processed_date'] = current_day_str
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: Deposited {income['description']} (${income['amount']}).")
                                 else:
                                     processing_log.append(f"On {current_day.strftime('%Y-%m-%d')}: FAILED to deposit {income['description']} - {message}")
@@ -2239,10 +2308,10 @@ class BusinessSimulator:
             final_date = simulation_start_date + datetime.timedelta(days=days_to_advance)
             # Check if we need to insert a time marker using the existing cursor
             cursor.execute(
-                "SELECT transaction_date FROM financial_ledger WHERE user_id = %s ORDER BY transaction_date DESC, entry_id DESC LIMIT 1",
+                "SELECT transaction_date FROM financial_ledger WHERE user_id = ? ORDER BY transaction_date DESC, entry_id DESC LIMIT 1",
                 (user_id,)
             )
-            last_entry = cursor.fetchone()
+            last_entry = self._row_to_dict(cursor.fetchone())
 
             # Convert last transaction_date to date for comparison (it's a datetime in DB)
             last_transaction_date = None
@@ -2255,7 +2324,7 @@ class BusinessSimulator:
             if not last_transaction_date or last_transaction_date < final_date:
                 uuid = f"time-adv-{user_id}-{int(time.time())}"
                 cursor.execute(
-                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description) VALUES (%s, %s, %s, 'System', 'Time Advanced')",
+                    "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description) VALUES (?, ?, ?, 'System', 'Time Advanced')",
                     (user_id, uuid, final_date)
                 )
             
@@ -2326,14 +2395,14 @@ class BusinessSimulator:
             cursor.execute("""
                 SELECT description, SUM(credit) as amount
                 FROM financial_ledger
-                WHERE user_id = %s
+                WHERE user_id = ?
                   AND account = 'Income'
-                  AND transaction_date BETWEEN %s AND %s
+                  AND transaction_date BETWEEN ? AND ?
                 GROUP BY description
                 ORDER BY amount DESC
             """, (user_id, start_date, end_date))
-            revenue_details = cursor.fetchall()
-            total_revenue = sum(r['amount'] for r in revenue_details)
+            revenue_details = self._rows_to_dicts(cursor.fetchall())
+            total_revenue = sum(self._from_money_str(r['amount']) for r in revenue_details)
 
             # Get all expenses by category (only include Expenses account or debits from CHECKING/SAVINGS/CASH/CREDIT accounts)
             cursor.execute("""
@@ -2343,26 +2412,26 @@ class BusinessSimulator:
                 FROM financial_ledger fl
                 LEFT JOIN expense_categories ec ON fl.category_id = ec.category_id
                 LEFT JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
-                WHERE fl.user_id = %s
+                WHERE fl.user_id = ?
                   AND fl.debit > 0
-                  AND fl.transaction_date BETWEEN %s AND %s
+                  AND fl.transaction_date BETWEEN ? AND ?
                   AND (fl.account = 'Expenses' OR a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'CREDIT'))
                 GROUP BY ec.name
                 ORDER BY amount DESC
             """, (user_id, start_date, end_date))
-            expense_details = cursor.fetchall()
-            total_expenses = sum(e['amount'] for e in expense_details)
+            expense_details = self._rows_to_dicts(cursor.fetchall())
+            total_expenses = sum(self._from_money_str(e['amount']) for e in expense_details)
 
             return {
                 'revenue': {
-                    'total': total_revenue,
+                    'total': float(total_revenue),
                     'details': revenue_details
                 },
                 'expenses': {
-                    'total': total_expenses,
+                    'total': float(total_expenses),
                     'by_category': expense_details
                 },
-                'net_income': total_revenue - total_expenses
+                'net_income': float(total_revenue - total_expenses)
             }
         finally:
             cursor.close()
@@ -2388,7 +2457,7 @@ class BusinessSimulator:
             cursor.execute("""
                 SELECT a.name, a.type, a.balance
                 FROM accounts a
-                WHERE a.user_id = %s
+                WHERE a.user_id = ?
                 ORDER BY a.type, a.name
             """, (user_id,))
             accounts = cursor.fetchall()
@@ -2400,11 +2469,11 @@ class BusinessSimulator:
                     SELECT
                         COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance
                     FROM financial_ledger
-                    WHERE user_id = %s
-                      AND account = %s
-                      AND transaction_date <= %s
+                    WHERE user_id = ?
+                      AND account = ?
+                      AND transaction_date <= ?
                 """, (user_id, acc['name'], as_of_date))
-                result = cursor.fetchone()
+                result = self._row_to_dict(cursor.fetchone())
                 account_balances[acc['name']] = {
                     'type': acc['type'],
                     'balance': result['balance'] if result else Decimal(0)
@@ -2459,11 +2528,11 @@ class BusinessSimulator:
                     SUM(CASE WHEN fl.account = 'Expenses' OR a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'CREDIT') THEN fl.debit ELSE 0 END) as expenses
                 FROM financial_ledger fl
                 LEFT JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
-                WHERE fl.user_id = %s
-                  AND fl.transaction_date BETWEEN %s AND %s
+                WHERE fl.user_id = ?
+                  AND fl.transaction_date BETWEEN ? AND ?
             """, (user_id, start_date, end_date))
-            operating = cursor.fetchone()
-            operating_cash = (operating['income'] or 0) - (operating['expenses'] or 0)
+            operating = self._row_to_dict(cursor.fetchone())
+            operating_cash = float(self._from_money_str(operating['income'] or 0)) - float(self._from_money_str(operating['expenses'] or 0))
 
             # Investing Activities: Fixed asset purchases and investment account changes
             cursor.execute("""
@@ -2471,12 +2540,12 @@ class BusinessSimulator:
                     SUM(credit) - SUM(debit) as investing_flow
                 FROM financial_ledger fl
                 JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
-                WHERE fl.user_id = %s
+                WHERE fl.user_id = ?
                   AND a.type IN ('INVESTMENT', 'FIXED_ASSET')
-                  AND fl.transaction_date BETWEEN %s AND %s
+                  AND fl.transaction_date BETWEEN ? AND ?
             """, (user_id, start_date, end_date))
-            investing = cursor.fetchone()
-            investing_cash = investing['investing_flow'] or 0
+            investing = self._row_to_dict(cursor.fetchone())
+            investing_cash = float(self._from_money_str(investing['investing_flow'] or 0))
 
             # Financing Activities: Loan payments, credit card changes
             cursor.execute("""
@@ -2484,12 +2553,12 @@ class BusinessSimulator:
                     SUM(debit) - SUM(credit) as financing_flow
                 FROM financial_ledger fl
                 JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
-                WHERE fl.user_id = %s
+                WHERE fl.user_id = ?
                   AND a.type IN ('LOAN', 'CREDIT_CARD')
-                  AND fl.transaction_date BETWEEN %s AND %s
+                  AND fl.transaction_date BETWEEN ? AND ?
             """, (user_id, start_date, end_date))
-            financing = cursor.fetchone()
-            financing_cash = financing['financing_flow'] or 0
+            financing = self._row_to_dict(cursor.fetchone())
+            financing_cash = float(self._from_money_str(financing['financing_flow'] or 0))
 
             return {
                 'operating': operating_cash,
@@ -2505,8 +2574,10 @@ class BusinessSimulator:
         """Get dashboard summary data including stats and chart data."""
         conn, cursor = self._get_db_connection()
         try:
-            current_date = self._get_user_current_date(cursor, user_id)
+            current_date_str = self._get_user_current_date(cursor, user_id)
+            current_date = self._from_datetime_str(current_date_str)
             start_date = current_date - datetime.timedelta(days=days)
+            start_date_str = self._to_datetime_str(start_date)
 
             # Get total income and expenses for the period (exclude reversals)
             cursor.execute("""
@@ -2514,25 +2585,25 @@ class BusinessSimulator:
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as total_income,
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as total_expenses
                 FROM financial_ledger
-                WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
-                    AND is_reversal = FALSE
-            """, (user_id, start_date, current_date))
-            totals = cursor.fetchone()
+                WHERE user_id = ? AND transaction_date BETWEEN ? AND ?
+                    AND is_reversal = 0
+            """, (user_id, start_date_str, current_date_str))
+            totals = self._row_to_dict(cursor.fetchone())
 
             # Get spending by category (exclude reversals)
             cursor.execute("""
                 SELECT c.name, c.color, SUM(l.debit) as amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
-                    AND l.is_reversal = FALSE
+                    AND l.is_reversal = 0
                 GROUP BY c.category_id, c.name, c.color
                 ORDER BY amount DESC
-            """, (user_id, start_date, current_date))
-            spending_by_category = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            spending_by_category = self._rows_to_dicts(cursor.fetchall())
 
             # Get net worth over time (daily snapshots) - exclude reversals
             cursor.execute("""
@@ -2540,56 +2611,57 @@ class BusinessSimulator:
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as daily_change
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
-                WHERE l.user_id = %s AND transaction_date BETWEEN %s AND %s
-                    AND l.is_reversal = FALSE
+                WHERE l.user_id = ? AND transaction_date BETWEEN ? AND ?
+                    AND l.is_reversal = 0
                 GROUP BY DATE(transaction_date)
                 ORDER BY date
-            """, (user_id, start_date, current_date))
-            daily_changes = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            daily_changes = self._rows_to_dicts(cursor.fetchall())
 
             # Calculate starting balance at the beginning of the period (exclude reversals)
             cursor.execute("""
                 SELECT SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as balance_before_period
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
-                WHERE l.user_id = %s AND transaction_date < %s
-                    AND l.is_reversal = FALSE
-            """, (user_id, start_date))
-            result = cursor.fetchone()
-            starting_balance = float(result['balance_before_period'] or 0) if result else 0.0
+                WHERE l.user_id = ? AND transaction_date < ?
+                    AND l.is_reversal = 0
+            """, (user_id, start_date_str))
+            result = self._row_to_dict(cursor.fetchone())
+            starting_balance = self._from_money_str(result['balance_before_period']) if result and result['balance_before_period'] else Decimal('0.0')
 
             net_worth_trend = []
-            cumulative = starting_balance
+            cumulative = float(starting_balance)
             for row in daily_changes:
-                cumulative += float(row['daily_change'] or 0)
+                daily_change = float(self._from_money_str(row['daily_change'])) if row['daily_change'] else 0.0
+                cumulative += daily_change
                 net_worth_trend.append({
-                    'date': row['date'].strftime('%Y-%m-%d'),
+                    'date': row['date'],  # Already a string from SQLite DATE()
                     'net_worth': float(cumulative)
                 })
 
             # Calculate savings rate
-            total_income = float(totals['total_income'] or 0)
-            total_expenses = float(totals['total_expenses'] or 0)
+            total_income = float(self._from_money_str(totals['total_income']))
+            total_expenses = float(self._from_money_str(totals['total_expenses']))
             savings_rate = ((total_income - total_expenses) / total_income * 100) if total_income > 0 else 0
 
             # Get monthly income vs expenses for bar chart (exclude reversals)
             cursor.execute("""
                 SELECT
-                    DATE_FORMAT(transaction_date, '%%Y-%%m') as month,
+                    strftime('%Y-%m', transaction_date) as month,
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as income,
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
                 FROM financial_ledger
-                WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
-                    AND is_reversal = FALSE
-                GROUP BY DATE_FORMAT(transaction_date, '%%Y-%%m')
+                WHERE user_id = ? AND transaction_date BETWEEN ? AND ?
+                    AND is_reversal = 0
+                GROUP BY strftime('%Y-%m', transaction_date)
                 ORDER BY month
-            """, (user_id, start_date, current_date))
-            monthly_data = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            monthly_data = self._rows_to_dicts(cursor.fetchall())
             income_vs_expenses = [
                 {
                     'month': row['month'],
-                    'income': float(row['income'] or 0),
-                    'expenses': float(row['expenses'] or 0)
+                    'income': float(self._from_money_str(row['income'])),
+                    'expenses': float(self._from_money_str(row['expenses']))
                 } for row in monthly_data
             ]
 
@@ -2597,49 +2669,57 @@ class BusinessSimulator:
             cursor.execute("""
                 SELECT
                     MIN(transaction_date) as week_start,
-                    YEARWEEK(transaction_date, 1) as year_week,
+                    strftime('%Y-%W', transaction_date) as year_week,
                     SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as income,
                     SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
                 FROM financial_ledger
-                WHERE user_id = %s AND transaction_date BETWEEN %s AND %s
-                    AND is_reversal = FALSE
-                GROUP BY YEARWEEK(transaction_date, 1)
+                WHERE user_id = ? AND transaction_date BETWEEN ? AND ?
+                    AND is_reversal = 0
+                GROUP BY strftime('%Y-%W', transaction_date)
                 ORDER BY year_week
-            """, (user_id, start_date, current_date))
-            weekly_data = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            weekly_data = self._rows_to_dicts(cursor.fetchall())
 
             # Format weekly data
             weekly_income_expenses = []
             for row in weekly_data:
                 weekly_income_expenses.append({
-                    'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
-                    'income': float(row['income'] or 0),
-                    'expenses': float(row['expenses'] or 0)
+                    'week_start': row['week_start'],  # Already a string from SQLite
+                    'income': float(self._from_money_str(row['income'])),
+                    'expenses': float(self._from_money_str(row['expenses']))
                 })
 
             # Get weekly expenses by category - monthly categories show as weekly average
             cursor.execute("""
                 SELECT
                     MIN(l.transaction_date) as week_start,
-                    YEARWEEK(l.transaction_date, 1) as year_week,
+                    strftime('%Y-%W', l.transaction_date) as year_week,
                     c.name as category,
                     c.color,
                     c.is_monthly,
                     SUM(l.debit) as amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
-                GROUP BY YEARWEEK(l.transaction_date, 1), c.category_id, c.name, c.color, c.is_monthly
+                GROUP BY strftime('%Y-%W', l.transaction_date), c.category_id, c.name, c.color, c.is_monthly
                 ORDER BY year_week, amount DESC
-            """, (user_id, start_date, current_date))
-            weekly_expenses_raw = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            weekly_expenses_raw = self._rows_to_dicts(cursor.fetchall())
 
             # Build a complete weekly series and smooth monthly categories across all weeks
             # 1) Collect all ISO weeks in range (week starts Monday)
             def week_monday(d):
+                if isinstance(d, str):
+                    # Try datetime format first (with time), then date-only format
+                    try:
+                        d = datetime.datetime.strptime(d, '%Y-%m-%d %H:%M:%S').date()
+                    except ValueError:
+                        d = datetime.datetime.strptime(d, '%Y-%m-%d').date()
+                elif isinstance(d, datetime.datetime):
+                    d = d.date()
                 return d - datetime.timedelta(days=d.weekday())
 
             weeks = []
@@ -2653,7 +2733,7 @@ class BusinessSimulator:
             non_monthly_map = {}
             for row in weekly_expenses_raw:
                 if not row.get('is_monthly'):
-                    raw_ws = row['week_start'].date() if hasattr(row['week_start'], 'date') else row['week_start']
+                    raw_ws = row['week_start']  # Already a string from SQLite
                     # Normalize to Monday of that week for consistent x-axis
                     ws = week_monday(raw_ws)
                     key = (ws, row['category'])
@@ -2662,26 +2742,26 @@ class BusinessSimulator:
                         'category': row['category'],
                         'color': row['color'],
                         'is_monthly': False,
-                        'amount': round(float(row['amount'] or 0), 2)
+                        'amount': round(float(self._from_money_str(row['amount'])), 2)
                     }
 
             # 3) Compute monthly totals for monthly categories
             cursor.execute("""
                 SELECT
-                    DATE_FORMAT(l.transaction_date, '%%Y-%%m') as ym,
+                    strftime('%Y-%m', l.transaction_date) as ym,
                     c.name as category,
                     c.color,
                     SUM(l.debit) as monthly_amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
                     AND c.is_monthly = 1
                 GROUP BY ym, c.category_id, c.name, c.color
-            """, (user_id, start_date, current_date))
-            monthly_totals = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            monthly_totals = self._rows_to_dicts(cursor.fetchall())
 
             monthly_map = {}  # (ym, category) -> {color, monthly_amount}
             monthly_categories = set()
@@ -2690,7 +2770,7 @@ class BusinessSimulator:
                 cat = row['category']
                 monthly_map[(ym, cat)] = {
                     'color': row['color'],
-                    'monthly_amount': float(row['monthly_amount'] or 0)
+                    'monthly_amount': float(self._from_money_str(row['monthly_amount']))
                 }
                 monthly_categories.add(cat)
 
@@ -2718,45 +2798,54 @@ class BusinessSimulator:
             # Get expenses by category over time (stacked bar)
             cursor.execute("""
                 SELECT
-                    DATE_FORMAT(l.transaction_date, '%%Y-%%m') as month,
+                    strftime('%Y-%m', l.transaction_date) as month,
                     c.name as category,
                     c.color,
                     SUM(l.debit) as amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
-                GROUP BY DATE_FORMAT(l.transaction_date, '%%Y-%%m'), c.category_id, c.name, c.color
+                GROUP BY strftime('%Y-%m', l.transaction_date), c.category_id, c.name, c.color
                 ORDER BY month, amount DESC
             """, (user_id, start_date, current_date))
-            expenses_over_time = cursor.fetchall()
+            expenses_over_time = self._rows_to_dicts(cursor.fetchall())
 
             # Get weekly expenses by category for trends chart
             cursor.execute("""
                 SELECT
                     MIN(l.transaction_date) as week_start,
-                    YEARWEEK(l.transaction_date, 1) as year_week,
+                    strftime('%Y-%W', l.transaction_date) as year_week,
                     c.name as category,
                     c.color,
                     SUM(l.debit) as amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
-                GROUP BY YEARWEEK(l.transaction_date, 1), c.category_id, c.name, c.color
+                GROUP BY strftime('%Y-%W', l.transaction_date), c.category_id, c.name, c.color
                 ORDER BY year_week, amount DESC
-            """, (user_id, start_date, current_date))
-            weekly_expenses_raw = cursor.fetchall()
+            """, (user_id, start_date_str, current_date_str))
+            weekly_expenses_raw = self._rows_to_dicts(cursor.fetchall())
 
             # Format weekly expenses data
             weekly_expenses_by_category = []
             for row in weekly_expenses_raw:
+                # Check if week_start is a string or datetime object
+                week_start_val = row['week_start']
+                if isinstance(week_start_val, str):
+                    formatted_week_start = week_start_val
+                elif week_start_val:
+                    formatted_week_start = week_start_val.strftime('%Y-%m-%d')
+                else:
+                    formatted_week_start = None
+
                 weekly_expenses_by_category.append({
-                    'week_start': row['week_start'].strftime('%Y-%m-%d') if row['week_start'] else None,
+                    'week_start': formatted_week_start,
                     'category': row['category'],
                     'color': row['color'],
                     'amount': float(row['amount'] or 0)
@@ -2769,11 +2858,11 @@ class BusinessSimulator:
                     SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD') THEN credit - debit ELSE 0 END) as liability_change
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
-                WHERE l.user_id = %s AND transaction_date BETWEEN %s AND %s
+                WHERE l.user_id = ? AND transaction_date BETWEEN ? AND ?
                 GROUP BY DATE(transaction_date)
                 ORDER BY date
             """, (user_id, start_date, current_date))
-            daily_balance_changes = cursor.fetchall()
+            daily_balance_changes = self._rows_to_dicts(cursor.fetchall())
 
             # Calculate starting assets and liabilities
             cursor.execute("""
@@ -2782,9 +2871,9 @@ class BusinessSimulator:
                     SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD') THEN credit - debit ELSE 0 END) as starting_liabilities
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
-                WHERE l.user_id = %s AND transaction_date < %s
-            """, (user_id, start_date))
-            starting = cursor.fetchone()
+                WHERE l.user_id = ? AND transaction_date < ?
+            """, (user_id, start_date_str))
+            starting = self._row_to_dict(cursor.fetchone())
             cumulative_assets = float(starting['starting_assets'] or 0) if starting else 0.0
             cumulative_liabilities = float(starting['starting_liabilities'] or 0) if starting else 0.0
 
@@ -2792,8 +2881,15 @@ class BusinessSimulator:
             for row in daily_balance_changes:
                 cumulative_assets += float(row['asset_change'] or 0)
                 cumulative_liabilities += float(row['liability_change'] or 0)
+                # Check if date is a string or datetime object
+                date_val = row['date']
+                if isinstance(date_val, str):
+                    formatted_date = date_val
+                else:
+                    formatted_date = date_val.strftime('%Y-%m-%d')
+
                 assets_vs_liabilities.append({
-                    'date': row['date'].strftime('%Y-%m-%d'),
+                    'date': formatted_date,
                     'assets': float(cumulative_assets),
                     'liabilities': float(cumulative_liabilities)
                 })
@@ -2803,25 +2899,25 @@ class BusinessSimulator:
                 SELECT c.name, c.color, SUM(l.debit) as amount
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND l.account = 'Expenses'
-                    AND l.transaction_date BETWEEN %s AND %s
+                    AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
                 GROUP BY c.category_id, c.name, c.color
                 ORDER BY amount DESC
                 LIMIT 5
             """, (user_id, start_date, current_date))
-            top_categories = cursor.fetchall()
+            top_categories = self._rows_to_dicts(cursor.fetchall())
 
             # Get credit balance over time (credit cards + loans)
             # First, get all credit accounts for this user
             cursor.execute("""
                 SELECT account_id, name, type
                 FROM accounts
-                WHERE user_id = %s AND type IN ('CREDIT_CARD', 'LOAN')
+                WHERE user_id = ? AND type IN ('CREDIT_CARD', 'LOAN')
                 ORDER BY name
             """, (user_id,))
-            credit_accounts = cursor.fetchall()
+            credit_accounts = self._rows_to_dicts(cursor.fetchall())
 
             # Get daily balance changes for credit accounts
             cursor.execute("""
@@ -2832,13 +2928,13 @@ class BusinessSimulator:
                     SUM(credit - debit) as daily_change
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND a.type IN ('CREDIT_CARD', 'LOAN')
-                    AND transaction_date BETWEEN %s AND %s
+                    AND transaction_date BETWEEN ? AND ?
                 GROUP BY DATE(transaction_date), a.account_id, a.name, a.type
                 ORDER BY date, a.name
             """, (user_id, start_date, current_date))
-            daily_credit_changes = cursor.fetchall()
+            daily_credit_changes = self._rows_to_dicts(cursor.fetchall())
 
             # Calculate starting balance for each credit account before the period
             cursor.execute("""
@@ -2849,12 +2945,12 @@ class BusinessSimulator:
                     SUM(credit - debit) as balance_before_period
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
-                WHERE l.user_id = %s
+                WHERE l.user_id = ?
                     AND a.type IN ('CREDIT_CARD', 'LOAN')
-                    AND transaction_date < %s
+                    AND transaction_date < ?
                 GROUP BY a.account_id, a.name, a.type
-            """, (user_id, start_date))
-            starting_balances = cursor.fetchall()
+            """, (user_id, start_date_str))
+            starting_balances = self._rows_to_dicts(cursor.fetchall())
 
             # Build a map of starting balances by account_id
             starting_balance_map = {}
@@ -2881,14 +2977,24 @@ class BusinessSimulator:
                 for row in daily_credit_changes:
                     if row['account_id'] == account_id:
                         cumulative += float(row['daily_change'] or 0)
-                        date_str = row['date'].strftime('%Y-%m-%d')
+                        # Check if date is a string or datetime object
+                        date_val = row['date']
+                        if isinstance(date_val, str):
+                            date_str = date_val
+                        else:
+                            date_str = date_val.strftime('%Y-%m-%d')
                         credit_balance_by_account[account_id]['balances'][date_str] = float(cumulative)
 
             # Calculate total credit balance trend (sum of all selected accounts)
             # Get all unique dates
             all_dates = set()
             for row in daily_credit_changes:
-                all_dates.add(row['date'].strftime('%Y-%m-%d'))
+                # Check if date is a string or datetime object
+                date_val = row['date']
+                if isinstance(date_val, str):
+                    all_dates.add(date_val)
+                else:
+                    all_dates.add(date_val.strftime('%Y-%m-%d'))
             all_dates = sorted(list(all_dates))
 
             credit_balance_trend = []

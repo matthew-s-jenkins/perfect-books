@@ -1,34 +1,26 @@
-alembic==1.17.0
-altgraph==0.17.4
-bcrypt==5.0.0
-blinker==1.9.0
-click==8.2.1
-colorama==0.4.6
+# Core Flask dependencies
 Flask==3.0.0
 flask-cors==6.0.1
 Flask-Login==0.6.3
-Flask-Migrate==4.0.5
-Flask-SQLAlchemy==3.1.1
-git-filter-repo==2.47.0
-greenlet==3.2.4
-gunicorn==21.2.0
-iniconfig==2.1.0
+Werkzeug==3.0.1
+
+# Security
+bcrypt==5.0.0
+
+# Environment management
+python-dotenv==1.0.0
+
+# Fake data generation (for demo mode)
+Faker==19.12.0
+
+# Utilities
+click==8.2.1
+colorama==0.4.6
+blinker==1.9.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
-Mako==1.3.10
 MarkupSafe==3.0.2
-mysql-connector-python==8.2.0
-mysql-connector-repackaged==0.3.1
-packaging==25.0
-pefile==2023.2.7
-pluggy==1.6.0
-protobuf==4.21.12
-pyinstaller==6.16.0
-pyinstaller-hooks-contrib==2025.9
-pytest==7.4.3
-python-dotenv==1.0.0
-pywin32-ctypes==0.2.3
-setuptools==80.9.0
-SQLAlchemy==2.0.23
-typing_extensions==4.15.0
-Werkzeug==3.0.1
+
+# Note: SQLite3 is built into Python, no separate package needed
+# Removed: mysql-connector-python (replaced with built-in sqlite3)
+# Removed: SQLAlchemy, Flask-Migrate, alembic (not needed for direct SQL approach)
