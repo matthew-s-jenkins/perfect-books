@@ -63,6 +63,21 @@ If the browser doesn't open automatically:
   - Manually go to: http://127.0.0.1:5001
 
 
+HOW TO UPDATE PERFECT BOOKS
+---------------------------
+When there's a new version:
+1. Delete the old Perfect_Books folder
+2. Download the new version
+3. Double-click START_MAC.command
+4. Your data will be restored automatically!
+
+Your financial data is safely backed up to:
+  Documents/PerfectBooks_Data/
+
+You don't need to do anything - backups happen automatically
+every time you start the app.
+
+
 NEED HELP?
 ----------
 Text me! I'll help you get it running.

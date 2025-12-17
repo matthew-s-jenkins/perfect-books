@@ -12,7 +12,10 @@ build/
 *.spec
 venv/
 env/
+
+# Log files
 *.log
+src/*.log
 
 # Database files - NEVER commit user data!
 src/data/
@@ -55,11 +58,3 @@ node_modules/
 
 # Test files
 test_*.py
-
-# Documentation files (temporary - remove later)
-MIGRATION_GUIDE.md
-PHASE1_COMPLETE.md
-
-# Old/deprecated launcher files
-RUN.bat
-CLEANUP_RECOMMENDATIONS.txt

@@ -210,12 +210,13 @@ This mirrors real business expense management workflows.
 - **Data Isolation**: Complete segregation - users can only see their own data
 - **Password Security**: Industry-standard bcrypt hashing
 
-### 🕐 Time Simulation
+### 💾 Automatic Backup & Restore
 
-- **Auto-Advance Time**: Automatically advances to current date on login and page refresh
-- **Manual Advance**: Fast-forward days/weeks to see recurring expenses process
-- **What-If Analysis**: Test financial scenarios before they happen
-- **Automated Processing**: Recurring expenses auto-pay when their due date arrives
+- **Auto-Backup on Startup**: Your data is automatically backed up every time you launch the app
+- **Safe Updates**: Delete the app folder, download a new version - your data restores automatically!
+- **Rolling Backups**: Keeps 3 daily backups + 4 weekly backups (created on Sundays)
+- **Cross-Platform Storage**: Backups stored in `Documents/PerfectBooks_Data/`
+- **Zero Effort**: No manual backup needed - it just works
 
 ---
 
@@ -508,12 +509,16 @@ See full API documentation in the original README or via Swagger (coming soon).
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v3.0 - SQLite Migration)
+### ✅ Current Features (v3.1 - Auto-Backup Release)
 - ✅ **Fully Portable** - SQLite single-file database
 - ✅ **Cross-Platform** - Mac and Windows support
 - ✅ **One-Click Startup** - Simple launcher scripts
 - ✅ **Zero Configuration** - No database server needed
 - ✅ **Easy Distribution** - Send folder to anyone
+- ✅ **Automatic Backup** - Data backed up to Documents folder on every startup
+- ✅ **Auto-Restore** - Seamless data recovery after updates
+- ✅ **Rolling Backups** - 3 daily + 4 weekly backups with auto-cleanup
+- ✅ **Change Password** - In-app password management with show/hide toggle
 - ✅ Multi-user authentication with bcrypt
 - ✅ Double-entry accounting system
 - ✅ Multi-account management
@@ -523,27 +528,23 @@ See full API documentation in the original README or via Swagger (coming soon).
 - ✅ Recurring expenses and income (including variable amounts)
 - ✅ Loan tracking with payment breakdown
 - ✅ Credit card interest automation
-- ✅ Time simulation
 - ✅ Interactive dashboard charts
 - ✅ Expense analysis with drill-down
 - ✅ CSV export
 
-### 🔮 Planned Features (v3.1)
+### 🔮 Planned Features (v3.2)
 - [ ] **Power BI Dashboard Integration** - ODBC connection to SQLite
-- [ ] **Schema Migration System** - Auto-apply database updates
 - [ ] **Demo Mode** - Fake data for portfolio showcase
 - [ ] Budget planning and alerts
 - [ ] Financial goal tracking
-- [ ] Receipt uploads
 - [ ] PDF reports
 
 ### Future Enhancements (v4.0+)
-- [ ] Mac installation guides
-- [ ] GitHub release automation
 - [ ] Native mobile app (React Native)
 - [ ] Bank account integration (Plaid API)
 - [ ] AI-powered expense categorization
 - [ ] Multi-currency support
+- [ ] Receipt uploads with OCR
 
 ---
 

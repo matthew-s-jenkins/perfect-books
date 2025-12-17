@@ -23,11 +23,12 @@ Perfect Books is a portable personal finance application with **no database serv
    Perfect Books - Personal Finance Manager
    ============================================================
 
-   [1/5] Checking Python version... [OK] Python 3.13.1
-   [2/5] Checking dependencies... [OK]
-   [3/5] Database found... [OK]
-   [4/5] Checking for migrations... [OK] No pending migrations
-   [5/5] Starting Perfect Books server...
+   [1/6] Checking Python version... [OK] Python 3.13.1
+   [2/6] Checking dependencies... [OK]
+   [3/6] Database found... [OK]
+   [4/6] Backing up your data... [OK] Saved to Documents/PerfectBooks_Data
+   [5/6] Checking for migrations... [OK] No pending migrations
+   [6/6] Starting Perfect Books server...
 
    ============================================================
    Perfect Books is running!
@@ -88,11 +89,12 @@ Perfect Books is a portable personal finance application with **no database serv
 Perfect Books - Personal Finance Manager
 ============================================================
 
-[1/5] Checking Python version... [OK] Python 3.13.1
-[2/5] Checking dependencies... [OK]
-[3/5] Database found... [OK]
-[4/5] Checking for migrations... [OK] No pending migrations
-[5/5] Starting Perfect Books server...
+[1/6] Checking Python version... [OK] Python 3.13.1
+[2/6] Checking dependencies... [OK]
+[3/6] Database found... [OK]
+[4/6] Backing up your data... [OK] Saved to Documents/PerfectBooks_Data
+[5/6] Checking for migrations... [OK] No pending migrations
+[6/6] Starting Perfect Books server...
 
 ============================================================
 Perfect Books is running!
@@ -100,8 +102,6 @@ Perfect Books is running!
 
   Server: http://127.0.0.1:5001
   Press Ctrl+C to stop the server
-
-Database: Using SQLite (c:\Projects\Perfect_Books\src\data\perfectbooks.db)
 ```
 
 ### In the Browser:
@@ -189,28 +189,25 @@ netstat -ano | findstr :5001
 **Perfect Books uses SQLite** - a lightweight, file-based database:
 
 - **Location:** `src/data/perfectbooks.db`
-- **Backup:** Just copy the `.db` file!
 - **No server needed:** Everything runs locally
 - **Portable:** Move the folder anywhere, it still works
 
-**To backup your data:**
+### Automatic Backups
+
+Your data is **automatically backed up** every time you start the app!
+
+- **Backup Location:** `Documents/PerfectBooks_Data/`
+- **Rolling Backups:** 3 daily + 4 weekly backups kept automatically
+- **Auto-Restore:** If you delete the app folder and reinstall, your data restores automatically!
+
+**You don't need to do anything** - backups happen silently on startup.
+
+### Manual Backup (Optional)
+
+If you want an extra copy:
 ```cmd
 copy src\data\perfectbooks.db src\data\perfectbooks_backup.db
 ```
-
----
-
-## 🚀 Advanced: Deploy to Railway
-
-Want to access Perfect Books from anywhere? Deploy to Railway:
-
-1. **Push to GitHub** (if you haven't already)
-2. **Connect Railway** to your GitHub repo
-3. **Add environment variable:**
-   - `SECRET_KEY` = (generate a random string)
-4. **Deploy!**
-
-The app automatically uses SQLite in production - no database setup needed!
 
 ---
 
