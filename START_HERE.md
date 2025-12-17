@@ -1,168 +1,239 @@
 # 🚀 How to Start Perfect Books
 
-## The Problem: Terminal Window Closes Immediately
+Perfect Books is a portable personal finance application with **no database server required**! It uses SQLite and runs locally on your computer.
 
-This happens when you double-click `api.py` or `session_controller.py` directly. These are **not** startup files!
+---
 
-## ✅ The Correct Way to Start Perfect Books
+## ✅ Quick Start (Windows)
 
-### Option 1: Use RUN.bat (Easiest)
+### Option 1: One-Click Startup (Easiest)
 
 1. **Navigate to the Perfect_Books folder:**
    ```
    c:\Projects\Perfect_Books
    ```
 
-2. **Double-click:** `RUN.bat`
+2. **Double-click:** `START_WINDOWS.bat`
 
-3. **A terminal window will stay open** and show:
+3. **Your browser will automatically open** to the login page!
+
+4. **What you'll see in the terminal:**
    ```
-   ========================================
-     PERFECT BOOKS - Starting Server
-   ========================================
+   ============================================================
+   Perfect Books - Personal Finance Manager
+   ============================================================
 
-   Starting Perfect Books API on port 5000...
+   [1/5] Checking Python version... [OK] Python 3.13.1
+   [2/5] Checking dependencies... [OK]
+   [3/5] Database found... [OK]
+   [4/5] Checking for migrations... [OK] No pending migrations
+   [5/5] Starting Perfect Books server...
 
-   Once started, open your browser to:
-     http://localhost:5000
+   ============================================================
+   Perfect Books is running!
+   ============================================================
+
+     Server: http://127.0.0.1:5001
+     Press Ctrl+C to stop the server
    ```
 
-4. **Open your browser** and go to:
-   ```
-   http://localhost:5000
-   ```
+5. **To stop the server:** Press `Ctrl+C` in the terminal window
 
-### Option 2: Use Command Prompt (Manual)
+### Option 2: Command Line (Manual)
 
 1. **Open Command Prompt** (Win + R, type `cmd`, press Enter)
 
 2. **Navigate to Perfect Books:**
    ```cmd
-   cd c:\Projects\Perfect_Books\src
+   cd c:\Projects\Perfect_Books
    ```
 
-3. **Run the API:**
+3. **Run the launcher:**
    ```cmd
-   python api.py
+   python start.py
    ```
 
-4. **Keep the terminal window open!**
-
-5. **Open your browser** to:
+4. **Open your browser** to:
    ```
-   http://localhost:5000
+   http://127.0.0.1:5001
    ```
 
-### Option 3: Use PowerShell
+---
 
-1. **Open PowerShell** in Perfect_Books folder
-   - Navigate to `c:\Projects\Perfect_Books`
-   - Shift + Right-click in folder
-   - Select "Open PowerShell window here"
+## 🍎 Quick Start (Mac)
 
-2. **Run:**
-   ```powershell
-   cd src
-   python api.py
+1. **Open Terminal** and navigate to Perfect_Books folder:
+   ```bash
+   cd /path/to/Perfect_Books
    ```
 
-3. **Open browser** to http://localhost:5000
+2. **Install dependencies** (first time only):
+   ```bash
+   pip3 install -r requirements.txt
+   ```
+
+3. **Run the launcher:**
+   - **Option A:** Double-click `START_MAC.command`
+   - **Option B:** In Terminal: `python3 start.py`
+
+4. **Browser opens automatically** to http://127.0.0.1:5001
+
+---
 
 ## 🌐 What You Should See
 
 ### In the Terminal:
 ```
 ============================================================
-ENVIRONMENT VARIABLES IN API.PY:
-  DB_HOST: localhost
-  DB_PORT: 3306
-  DB_USER: root
-  DB_NAME: perfect_books
-  DB_PASSWORD: ***
+Perfect Books - Personal Finance Manager
 ============================================================
- * Serving Flask app 'api'
- * Debug mode: on
- * Running on http://127.0.0.1:5000
-Press CTRL+C to quit
+
+[1/5] Checking Python version... [OK] Python 3.13.1
+[2/5] Checking dependencies... [OK]
+[3/5] Database found... [OK]
+[4/5] Checking for migrations... [OK] No pending migrations
+[5/5] Starting Perfect Books server...
+
+============================================================
+Perfect Books is running!
+============================================================
+
+  Server: http://127.0.0.1:5001
+  Press Ctrl+C to stop the server
+
+Database: Using SQLite (c:\Projects\Perfect_Books\src\data\perfectbooks.db)
 ```
 
 ### In the Browser:
-You should see the **Perfect Books login page**.
+- You should see the **Perfect Books login page**
+- **First time?** Click "Register here" to create an account
+- **Returning user?** Log in with your credentials
 
-## ❌ Common Mistakes
+---
 
-### ❌ Don't Double-Click These Files:
-- `session_controller.py` - This is a **module**, not a startup script
-- `api.py` - Double-clicking runs it but the window closes after errors
-- `railway_config.py` - This is configuration, not a startup script
+## 🎯 First Time Setup
 
-### ✅ Do Use These:
-- `RUN.bat` - Startup script
-- Command Prompt with `python api.py`
-- The unified session manager (see below)
+When you run Perfect Books for the first time:
 
-## 🎯 Still Not Working?
+1. **Database is automatically created** at `src/data/perfectbooks.db`
+2. **No configuration needed** - it just works!
+3. **Register a new account** on the login page
+4. **Set up your accounts** (checking, savings, credit cards, etc.)
+5. **Start tracking your finances!**
 
-### Check if MySQL is Running:
+---
+
+## 🔧 Troubleshooting
+
+### ❌ "Python is not installed or not in PATH"
+
+**Fix:**
+1. Install Python 3.8+ from https://www.python.org/downloads/
+2. **Important:** Check "Add Python to PATH" during installation
+3. Restart your terminal and try again
+
+### ❌ "Missing required packages"
+
+**Fix:**
 ```cmd
-# Check if MySQL is accessible
-mysql -u root -p
+pip install -r requirements.txt
 ```
 
-If MySQL isn't running:
-- Start XAMPP (if you use it)
-- Or start MySQL service:
-  ```cmd
-  net start mysql
-  ```
+### ❌ Port 5001 is Already in Use
 
-### Check if Port 5000 is Already in Use:
+**Check what's using it:**
 ```cmd
-netstat -ano | findstr :5000
+netstat -ano | findstr :5001
 ```
 
-If something is using port 5000:
-- Close that application
-- Or change the port in `src/api.py` line 1292
+**Fix:**
+- Close the other application
+- Or kill the process: `taskkill /PID <process_id> /F`
+- Or change the port in `src/api.py` (search for `port=5001`)
 
-### Check for Errors:
-Run from command prompt to see error messages:
+### ❌ Browser Doesn't Open Automatically
+
+**Fix:**
+- Manually open your browser
+- Go to: http://127.0.0.1:5001
+
+### ❌ "An error occurred" Message
+
+**Fix:**
+- Open the terminal where the server is running
+- Look for error messages in red
+- Common issues:
+  - Missing Python packages → Run `pip install -r requirements.txt`
+  - Wrong Python version → Need Python 3.8 or higher
+  - Database locked → Close other instances of Perfect Books
+
+---
+
+## 📁 Important Files
+
+| File | Purpose |
+|------|---------|
+| `START_WINDOWS.bat` | Windows one-click launcher |
+| `START_MAC.command` | Mac one-click launcher |
+| `start.py` | Cross-platform Python launcher |
+| `src/data/perfectbooks.db` | Your SQLite database (auto-created) |
+| `src/api.py` | Flask API server |
+| `src/engine.py` | Business logic |
+| `index.html` | Main dashboard |
+| `login.html` | Login page |
+
+---
+
+## 🗄️ Database Information
+
+**Perfect Books uses SQLite** - a lightweight, file-based database:
+
+- **Location:** `src/data/perfectbooks.db`
+- **Backup:** Just copy the `.db` file!
+- **No server needed:** Everything runs locally
+- **Portable:** Move the folder anywhere, it still works
+
+**To backup your data:**
 ```cmd
-cd c:\Projects\Perfect_Books\src
-python api.py
+copy src\data\perfectbooks.db src\data\perfectbooks_backup.db
 ```
 
-Leave the window open and read any error messages.
+---
 
-## 🚀 Alternative: Use the Unified Session Manager
+## 🚀 Advanced: Deploy to Railway
 
-Instead of running each project separately, use the unified system:
+Want to access Perfect Books from anywhere? Deploy to Railway:
 
-1. **Run:**
-   ```
-   c:\Projects\run_all_projects.bat
-   ```
+1. **Push to GitHub** (if you haven't already)
+2. **Connect Railway** to your GitHub repo
+3. **Add environment variable:**
+   - `SECRET_KEY` = (generate a random string)
+4. **Deploy!**
 
-2. **Open browser to:**
-   ```
-   http://localhost:5100
-   ```
+The app automatically uses SQLite in production - no database setup needed!
 
-3. **You'll see a dashboard** with all 3 projects!
+---
 
 ## 📝 Summary
 
-| Method | File to Run | Browser URL |
-|--------|-------------|-------------|
-| **RUN.bat** | Double-click `RUN.bat` | http://localhost:5000 |
-| **Command Prompt** | `cd src && python api.py` | http://localhost:5000 |
-| **Unified Manager** | `run_all_projects.bat` | http://localhost:5100 |
+| Platform | Startup Method | Browser URL |
+|----------|---------------|-------------|
+| **Windows** | Double-click `START_WINDOWS.bat` | http://127.0.0.1:5001 |
+| **Mac** | Double-click `START_MAC.command` | http://127.0.0.1:5001 |
+| **Any Platform** | `python start.py` or `python3 start.py` | http://127.0.0.1:5001 |
 
-## 🆘 Need Help?
+---
 
-If you're still seeing the terminal window close:
-1. Open Command Prompt manually
-2. Navigate to `c:\Projects\Perfect_Books\src`
-3. Run `python api.py`
-4. **Take a screenshot** of the error message
-5. Share the error so we can fix it!
+## 🆘 Still Need Help?
+
+1. **Check the terminal** for error messages (red text)
+2. **Verify Python is installed:** `python --version` (should be 3.8+)
+3. **Verify packages are installed:** `pip list | findstr Flask`
+4. **Check the database exists:** Look for `src/data/perfectbooks.db`
+5. **Try the manual method:** `python start.py` to see detailed output
+
+**For Mac users:** See `SETUP_FOR_MAC.txt` for detailed Mac-specific instructions.
+
+---
+
+**Happy budgeting! 💰**

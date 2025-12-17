@@ -59,3 +59,7 @@ test_*.py
 # Documentation files (temporary - remove later)
 MIGRATION_GUIDE.md
 PHASE1_COMPLETE.md
+
+# Old/deprecated launcher files
+RUN.bat
+CLEANUP_RECOMMENDATIONS.txt
