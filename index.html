@@ -70,7 +70,166 @@
             );
         }
 
+        function ChangePasswordModal({ onClose, showToast }) {
+            const [currentPassword, setCurrentPassword] = React.useState('');
+            const [newPassword, setNewPassword] = React.useState('');
+            const [confirmPassword, setConfirmPassword] = React.useState('');
+            const [isSubmitting, setIsSubmitting] = React.useState(false);
+            const [showCurrentPassword, setShowCurrentPassword] = React.useState(false);
+            const [showNewPassword, setShowNewPassword] = React.useState(false);
+            const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+
+                if (!currentPassword || !newPassword || !confirmPassword) {
+                    showToast('Please fill in all fields', 'error');
+                    return;
+                }
+
+                if (newPassword !== confirmPassword) {
+                    showToast('New passwords do not match', 'error');
+                    return;
+                }
+
+                if (newPassword.length < 3) {
+                    showToast('New password must be at least 3 characters', 'error');
+                    return;
+                }
+
+                setIsSubmitting(true);
+
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/change_password`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            current_password: currentPassword,
+                            new_password: newPassword
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        showToast('Password changed successfully!', 'success');
+                        onClose();
+                    } else {
+                        showToast(data.message || 'Failed to change password', 'error');
+                    }
+                } catch (error) {
+                    showToast('Error changing password', 'error');
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold text-white">Change Password</h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+                        </div>
+                        <form onSubmit={handleSubmit}>
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showCurrentPassword ? "text" : "password"}
+                                        value={currentPassword}
+                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                        className="w-full bg-gray-700 text-white px-3 py-2 pr-16 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled={isSubmitting}
+                                    />
+                                    <button
+                                        type="button"
+                                        onMouseDown={() => setShowCurrentPassword(true)}
+                                        onMouseUp={() => setShowCurrentPassword(false)}
+                                        onMouseLeave={() => setShowCurrentPassword(false)}
+                                        onTouchStart={() => setShowCurrentPassword(true)}
+                                        onTouchEnd={() => setShowCurrentPassword(false)}
+                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white text-xs px-2 py-1 rounded select-none"
+                                        disabled={isSubmitting}
+                                    >
+                                        (show)
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showNewPassword ? "text" : "password"}
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        className="w-full bg-gray-700 text-white px-3 py-2 pr-16 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled={isSubmitting}
+                                    />
+                                    <button
+                                        type="button"
+                                        onMouseDown={() => setShowNewPassword(true)}
+                                        onMouseUp={() => setShowNewPassword(false)}
+                                        onMouseLeave={() => setShowNewPassword(false)}
+                                        onTouchStart={() => setShowNewPassword(true)}
+                                        onTouchEnd={() => setShowNewPassword(false)}
+                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white text-xs px-2 py-1 rounded select-none"
+                                        disabled={isSubmitting}
+                                    >
+                                        (show)
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showConfirmPassword ? "text" : "password"}
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        className="w-full bg-gray-700 text-white px-3 py-2 pr-16 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled={isSubmitting}
+                                    />
+                                    <button
+                                        type="button"
+                                        onMouseDown={() => setShowConfirmPassword(true)}
+                                        onMouseUp={() => setShowConfirmPassword(false)}
+                                        onMouseLeave={() => setShowConfirmPassword(false)}
+                                        onTouchStart={() => setShowConfirmPassword(true)}
+                                        onTouchEnd={() => setShowConfirmPassword(false)}
+                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white text-xs px-2 py-1 rounded select-none"
+                                        disabled={isSubmitting}
+                                    >
+                                        (show)
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+                                    disabled={isSubmitting}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? 'Changing...' : 'Change Password'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
         function Header({ status, username, showToast }) {
+            const [showPasswordModal, setShowPasswordModal] = React.useState(false);
+
             const formattedDate = status ?
                 new Date(status.date + 'T12:00:00').toLocaleDateString('en-US', {
                     year: 'numeric',
@@ -84,29 +243,43 @@
             };
 
             return (
-                <header className="bg-gray-800 shadow rounded-lg p-4 mb-6">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-white">Perfect Books</h1>
-                            <p className="text-sm sm:text-base text-gray-400">Personal Finance Manager</p>
+                <>
+                    {showPasswordModal && (
+                        <ChangePasswordModal
+                            onClose={() => setShowPasswordModal(false)}
+                            showToast={showToast}
+                        />
+                    )}
+                    <header className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h1 className="text-2xl sm:text-3xl font-bold text-white">Perfect Books</h1>
+                                <p className="text-sm sm:text-base text-gray-400">Personal Finance Manager</p>
+                            </div>
+                            <div className="sm:text-right w-full sm:w-auto">
+                                <p className="text-base sm:text-lg font-medium text-white">{formattedDate}</p>
+                                <p className="text-xs text-gray-500 mb-2">Current Date</p>
+                                {username && (
+                                    <div className="text-xs text-gray-400 flex flex-wrap items-center gap-2">
+                                        <span className="font-medium text-cyan-400">{username}</span>
+                                        <button
+                                            onClick={() => setShowPasswordModal(true)}
+                                            className="font-medium text-blue-500 hover:text-blue-400 hover:underline focus:outline-none"
+                                        >
+                                            (change password)
+                                        </button>
+                                        <button
+                                            onClick={handleLogout}
+                                            className="font-medium text-red-500 hover:text-red-400 hover:underline focus:outline-none"
+                                        >
+                                            (logout)
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <div className="sm:text-right w-full sm:w-auto">
-                            <p className="text-base sm:text-lg font-medium text-white">{formattedDate}</p>
-                            <p className="text-xs text-gray-500 mb-2">Current Date</p>
-                            {username && (
-                                <div className="text-xs text-gray-400 flex flex-wrap items-center gap-2">
-                                    <span className="font-medium text-cyan-400">{username}</span>
-                                    <button
-                                        onClick={handleLogout}
-                                        className="font-medium text-red-500 hover:text-red-400 hover:underline focus:outline-none"
-                                    >
-                                        (logout)
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </header>
+                    </header>
+                </>
             );
         }
 
@@ -497,32 +670,6 @@
 
                                                     {/* Payment breakdown grid */}
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                        {/* Interest */}
-                                                        <div>
-                                                            <label className="block text-xs text-gray-400 mb-1">Interest</label>
-                                                            <div className="relative">
-                                                                <span className="absolute left-2 top-2 text-gray-400 text-sm">$</span>
-                                                                <input
-                                                                    type="text"
-                                                                    value={loanPaymentInterestDisplay}
-                                                                    onChange={(e) => {
-                                                                        const raw = e.target.value.replace(/[$,]/g, '');
-                                                                        setLoanPaymentInterest(raw);
-                                                                        if (!raw) {
-                                                                            setLoanPaymentInterestDisplay('');
-                                                                        } else if (!isNaN(raw)) {
-                                                                            const parts = raw.split('.');
-                                                                            const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
-                                                                            const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
-                                                                            setLoanPaymentInterestDisplay(wholePart + decimalPart);
-                                                                        }
-                                                                    }}
-                                                                    className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
-                                                                    placeholder="0.00"
-                                                                />
-                                                            </div>
-                                                        </div>
-
                                                         {/* Principal */}
                                                         <div>
                                                             <label className="block text-xs text-gray-400 mb-1">Principal</label>
@@ -541,6 +688,32 @@
                                                                             const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
                                                                             const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
                                                                             setLoanPaymentPrincipalDisplay(wholePart + decimalPart);
+                                                                        }
+                                                                    }}
+                                                                    className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
+                                                                    placeholder="0.00"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Interest */}
+                                                        <div>
+                                                            <label className="block text-xs text-gray-400 mb-1">Interest</label>
+                                                            <div className="relative">
+                                                                <span className="absolute left-2 top-2 text-gray-400 text-sm">$</span>
+                                                                <input
+                                                                    type="text"
+                                                                    value={loanPaymentInterestDisplay}
+                                                                    onChange={(e) => {
+                                                                        const raw = e.target.value.replace(/[$,]/g, '');
+                                                                        setLoanPaymentInterest(raw);
+                                                                        if (!raw) {
+                                                                            setLoanPaymentInterestDisplay('');
+                                                                        } else if (!isNaN(raw)) {
+                                                                            const parts = raw.split('.');
+                                                                            const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
+                                                                            const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
+                                                                            setLoanPaymentInterestDisplay(wholePart + decimalPart);
                                                                         }
                                                                     }}
                                                                     className="bg-gray-700 text-white p-2 pl-6 rounded w-full font-mono text-sm"
@@ -1340,13 +1513,7 @@
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/dashboard?days=${dateRange}`);
                     if (!response.ok) throw new Error('Failed to fetch dashboard data');
                     const data = await response.json();
-                    console.log('Dashboard data received:', {
-                        dateRange: dateRange,
-                        total_income: data.total_income,
-                        total_expenses: data.total_expenses,
-                        net_income: data.net_income,
-                        period_days: data.period_days
-                    });
+                    // console.log('Dashboard data received:', dateRange, data);
                     setDashboardData(data);
                 } catch (err) {
                     showToast('Error loading dashboard', 'error');
@@ -2398,7 +2565,7 @@
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_analysis?start_date=${startDate}&end_date=${endDate}`);
                     if (!response.ok) throw new Error('Failed to fetch analysis data');
                     const data = await response.json();
-                    console.log('Analysis data received:', JSON.stringify(data, null, 2));
+                    // console.log('Analysis data received:', JSON.stringify(data, null, 2));
                     setAnalysisData(data);
                     const total = data.reduce((sum, cat) => sum + parseFloat(cat.total_amount || 0), 0);
                     setTotalExpenses(total);
@@ -2899,7 +3066,7 @@
 
             const handleUpdateIncome = async (incomeId) => {
                 try {
-                    console.log('Updating income with ID:', incomeId);
+                    // console.log('Updating income with ID:', incomeId);
                     const payload = {
                         description: editingDescription,
                         amount: editingIsVariable ? (editingEstimatedAmount ? parseFloat(editingEstimatedAmount) : 0) : parseFloat(editingAmount),
@@ -2907,7 +3074,7 @@
                         is_variable: editingIsVariable,
                         estimated_amount: editingIsVariable && editingEstimatedAmount ? parseFloat(editingEstimatedAmount) : null
                     };
-                    console.log('Payload:', payload);
+                    // console.log('Payload:', payload);
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_income/${incomeId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -2915,7 +3082,7 @@
                     });
 
                     const result = await response.json();
-                    console.log('Response:', result);
+                    // console.log('Response:', result);
 
                     if (response.ok) {
                         const incomeRes = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_income`);
@@ -3462,7 +3629,7 @@
             });
             const [transactionDate, setTransactionDate] = useState(() => {
                 if (status?.date) {
-                    const d = new Date(status.date);
+                    const d = new Date(status.date + 'T12:00:00');
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const day = String(d.getDate()).padStart(2, '0');
@@ -3581,7 +3748,7 @@
             const [description, setDescription] = useState('Account Transfer');
             const [transactionDate, setTransactionDate] = useState(() => {
                 if (status?.date) {
-                    const d = new Date(status.date);
+                    const d = new Date(status.date + 'T12:00:00');
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const day = String(d.getDate()).padStart(2, '0');
@@ -3720,7 +3887,7 @@
             const [selectedCategoryId, setSelectedCategoryId] = useState('');
             const [transactionDate, setTransactionDate] = useState(() => {
                 if (status?.date) {
-                    const d = new Date(status.date);
+                    const d = new Date(status.date + 'T12:00:00');
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const day = String(d.getDate()).padStart(2, '0');
@@ -4464,10 +4631,10 @@
                     setExpenseDescriptions(expenseDescData);
                     setExpenseCategories(categoriesData);
                     setMeterData(meterSummaryData);
-                    console.log('Setting averageData:', averageDataResponse, 'for dateRange:', dateRange);
+                    // console.log('Setting averageData:', averageDataResponse, 'for dateRange:', dateRange);
                     setAverageData(averageDataResponse);
                     setStatus(statusData);
-                    console.log('Status date:', statusData?.date);
+                    // console.log('Status date:', statusData?.date);
                     // Also refresh pending transactions when data refreshes
                     loadPendingTransactions();
                 } catch (error) {
@@ -4529,7 +4696,7 @@
             // Refresh data when date range changes
             useEffect(() => {
                 if (username) {  // Only refresh if user is logged in
-                    console.log('Date range changed to:', dateRange, 'Refreshing data...');
+                    // console.log('Date range changed to:', dateRange, 'Refreshing data...');
                     refreshData();
                 }
             }, [dateRange]);

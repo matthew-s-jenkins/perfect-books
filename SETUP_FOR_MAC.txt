@@ -1,0 +1,70 @@
+=============================================================
+PERFECT BOOKS - QUICK START GUIDE FOR MAC
+=============================================================
+
+Hi! Here's how to get Perfect Books running on your Mac:
+
+STEP 1: INSTALL PYTHON (if you don't have it)
+----------------------------------------------
+1. Go to https://www.python.org/downloads/
+2. Download Python 3.8 or newer for macOS
+3. Run the installer
+4. Follow the prompts (use default settings)
+
+Alternative - Install with Homebrew (if you use it):
+  brew install python3
+
+
+STEP 2: INSTALL DEPENDENCIES
+-----------------------------
+1. Open Terminal (search for "Terminal" in Spotlight)
+2. Navigate to this folder:
+   cd /path/to/Perfect_Books
+   (Tip: Type "cd " and drag the Perfect_Books folder into Terminal)
+3. Install required packages:
+   pip3 install -r requirements.txt
+
+
+STEP 3: RUN PERFECT BOOKS
+--------------------------
+Option A - Double-click (Easiest):
+  1. Find "START_MAC.command" in the Perfect_Books folder
+  2. Right-click it and choose "Open" (first time only)
+  3. Click "Open" in the security warning
+  4. Your browser will open automatically!
+
+Option B - Terminal:
+  1. Open Terminal
+  2. Navigate to Perfect_Books folder
+  3. Run: python3 start.py
+
+
+FIRST TIME SETUP
+-----------------
+When the browser opens:
+1. Click "Register" on the login page
+2. Create a username and password
+3. Start tracking your finances!
+
+
+TROUBLESHOOTING
+---------------
+If double-clicking START_MAC.command doesn't work:
+  1. Open Terminal
+  2. Run: chmod +x /path/to/Perfect_Books/START_MAC.command
+  3. Try double-clicking again
+
+If you get "command not found" errors:
+  - Python might not be installed correctly
+  - Try running: python3 --version
+  - If that fails, reinstall Python from python.org
+
+If the browser doesn't open automatically:
+  - Manually go to: http://127.0.0.1:5001
+
+
+NEED HELP?
+----------
+Text me! I'll help you get it running.
+
+=============================================================

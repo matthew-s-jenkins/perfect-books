@@ -208,9 +208,7 @@ def login_user_api():
 
         # Auto-advance time to today's date if needed
         try:
-            print(f"[LOGIN] Calling auto_advance_time for user {user.id}")
             result = sim.auto_advance_time(int(user.id))
-            print(f"[LOGIN] Auto-advance result: {result}")
         except Exception as e:
             print(f"[LOGIN] Auto-advance failed for user {user.id}: {e}")
             import traceback
@@ -226,6 +224,25 @@ def login_user_api():
 def logout():
     logout_user()
     return jsonify({"success": True, "message": "You have been logged out."})
+
+@app.route('/api/change_password', methods=['POST'])
+@check_sim
+@login_required
+def change_password():
+    """Change user's password after verifying current password."""
+    data = request.get_json()
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+
+    if not current_password or not new_password:
+        return jsonify({"success": False, "message": "Current password and new password are required."}), 400
+
+    success, message = sim.change_password(current_user.id, current_password, new_password)
+
+    if success:
+        return jsonify({"success": True, "message": message})
+    else:
+        return jsonify({"success": False, "message": message}), 400
 
 @app.route('/api/check_session', methods=['GET'])
 @login_required
@@ -320,7 +337,7 @@ def manage_account_api(account_id):
 def get_recurring_expenses_api():
     try:
         expenses = sim.get_recurring_expenses(user_id=current_user.id)
-        print(f"DEBUG: Found {len(expenses)} recurring expenses for user {current_user.id}")
+        # Debug: Found recurring expenses
         return jsonify(expenses)
     except Exception as e:
         print(f"ERROR in get_recurring_expenses_api: {e}")
@@ -450,7 +467,7 @@ def add_recurring_income_api():
 def manage_recurring_income_api(income_id):
     if request.method == 'PUT':
         data = request.get_json()
-        print(f"PUT /api/recurring_income/{income_id} received data:", data)
+        # Debug: PUT /api/recurring_income received
         description = data.get('description')
         amount = data.get('amount')
         deposit_day_of_month = data.get('deposit_day_of_month')
@@ -469,7 +486,7 @@ def manage_recurring_income_api(income_id):
             is_variable=is_variable,
             estimated_amount=estimated_amount
         )
-        print(f"update_recurring_income returned: success={success}, message={message}")
+        # Debug: update complete
         if success:
             return jsonify({"success": True, "message": message})
         else:
@@ -746,9 +763,7 @@ def update_expense_category_api():
 def advance_time():
     try:
         days = request.get_json().get('days', 1)
-        print(f"[ADVANCE_TIME] Starting time advance for {days} day(s)")
         result = sim.advance_time(user_id=current_user.id, days_to_advance=days)
-        print(f"[ADVANCE_TIME] Result: {result}")
         return jsonify({"success": True, "message": f"Time advanced by {days} days.", "result": result})
     except Exception as e:
         print(f"[ADVANCE_TIME ERROR] {str(e)}")
@@ -916,14 +931,13 @@ def make_loan_payment_api(loan_id):
     principal_amount = data.get('principal_amount', 0)
     payment_account_id = data.get('payment_account_id')
     payment_date = data.get('payment_date')
+    # Append time to avoid timezone interpretation issues
+    if payment_date and 'T' not in payment_date:
+        payment_date = payment_date + ' 12:00:00'
     escrow_amount = data.get('escrow_amount', 0)
     other_amounts = data.get('other_amounts', [])  # List of {label, amount}
 
-    # Debug logging
-    print(f"[PAYMENT DEBUG] Loan ID: {loan_id}")
-    print(f"[PAYMENT DEBUG] Interest: {interest_amount}, Principal: {principal_amount}, Escrow: {escrow_amount}")
-    print(f"[PAYMENT DEBUG] Other amounts: {other_amounts}")
-    print(f"[PAYMENT DEBUG] Payment account: {payment_account_id}, Date: {payment_date}")
+    # Debug logging removed
 
     if not payment_account_id:
         return jsonify({"success": False, "message": "Payment account is required."}), 400
@@ -942,7 +956,7 @@ def make_loan_payment_api(loan_id):
         other_amounts=other_amounts
     )
 
-    print(f"[PAYMENT DEBUG] Result: success={success}, message={message}")
+    # Debug: payment complete
 
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
@@ -968,7 +982,7 @@ def calculate_credit_card_interest_api(account_id):
             user_id=current_user.id,
             card_account_id=account_id
         )
-        print(f"DEBUG calculate_interest: success={success}, message={message}")
+        # Debug: interest calculated
         return jsonify({"success": success, "message": message}), 200 if success else 400
     except Exception as e:
         print(f"ERROR in calculate_interest_api: {e}")

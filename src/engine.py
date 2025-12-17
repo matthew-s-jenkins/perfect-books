@@ -311,6 +311,62 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
+    def change_password(self, user_id, current_password, new_password):
+        """
+        Change a user's password after verifying their current password.
+
+        Args:
+            user_id (int): The user's ID
+            current_password (str): Current plain-text password for verification
+            new_password (str): New plain-text password (will be hashed)
+
+        Returns:
+            tuple: (success bool, message str)
+                   - (True, "Password changed successfully.") on success
+                   - (False, error_message) on failure
+
+        Example:
+            success, msg = sim.change_password(1, "oldpass", "newpass")
+        """
+        conn, cursor = self._get_db_connection()
+        try:
+            # Verify user exists and get current password hash
+            cursor.execute("SELECT password_hash FROM users WHERE user_id = ?", (user_id,))
+            user_data = self._row_to_dict(cursor.fetchone())
+            if not user_data:
+                return False, "User not found."
+
+            # Verify current password
+            current_password_bytes = current_password.encode('utf-8')
+            password_hash_bytes = user_data['password_hash'].encode('utf-8')
+
+            if not bcrypt.checkpw(current_password_bytes, password_hash_bytes):
+                return False, "Current password is incorrect."
+
+            # Validate new password
+            if len(new_password) < 3:
+                return False, "New password must be at least 3 characters long."
+
+            # Hash new password
+            new_password_bytes = new_password.encode('utf-8')
+            salt = bcrypt.gensalt()
+            new_password_hash = bcrypt.hashpw(new_password_bytes, salt)
+
+            # Update password
+            cursor.execute(
+                "UPDATE users SET password_hash = ? WHERE user_id = ?",
+                (new_password_hash.decode('utf-8'), user_id)
+            )
+            conn.commit()
+            return True, "Password changed successfully."
+
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
     def check_user_has_accounts(self, user_id):
         conn, cursor = self._get_db_connection()
         try:
@@ -370,7 +426,19 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute("SELECT * FROM accounts WHERE user_id = ? AND type != 'EQUITY' ORDER BY name", (user_id,))
-            return self._rows_to_dicts(cursor.fetchall())
+            accounts = self._rows_to_dicts(cursor.fetchall())
+
+            # Calculate balance from ledger for each account
+            for account in accounts:
+                cursor.execute(
+                    "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as ledger_balance "
+                    "FROM financial_ledger WHERE user_id = ? AND account = ?",
+                    (user_id, account['name'])
+                )
+                ledger_balance = float(self._row_to_dict(cursor.fetchone())['ledger_balance'] or 0)
+                account['balance'] = ledger_balance
+
+            return accounts
         finally:
             cursor.close()
             conn.close()
@@ -610,7 +678,7 @@ class BusinessSimulator:
             cursor.execute(query, (user_id,))
             result = self._row_to_dict(cursor.fetchone())
             if result and result['total_monthly']:
-                return float(Decimal(result['total_monthly']) / 30)
+                return float(result['total_monthly']) / 30
             return 0.0
         finally:
             cursor.close()
@@ -840,9 +908,9 @@ class BusinessSimulator:
             """
             cursor.execute(query, (user_id, for_date))
             result = self._row_to_dict(cursor.fetchone())
-            total_income = result['total_income'] or Decimal('0.00')
-            total_expenses = result['total_expenses'] or Decimal('0.00')
-            return float(total_income - total_expenses)
+            total_income = float(result['total_income'] or 0)
+            total_expenses = float(result['total_expenses'] or 0)
+            return total_income - total_expenses
         finally:
             cursor.close()
             conn.close()
@@ -1127,21 +1195,26 @@ class BusinessSimulator:
                 return False, "This transaction has already been reversed or is itself a reversal."
 
             # Create reversal entries (swap debits and credits)
-            current_date = self._get_user_current_date(cursor, user_id)
+            # Use the original transaction's date for the reversal
+            original_transaction_date = entries[0]['transaction_date']
             reversal_uuid = f"reversal-{user_id}-{int(time.time())}"
             original_description = entries[0]['description']
 
             for entry in entries:
+                # Convert debit/credit to float to avoid Decimal issues
+                new_debit = float(entry['credit']) if entry['credit'] else 0
+                new_credit = float(entry['debit']) if entry['debit'] else 0
+
                 cursor.execute(
                     "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id, is_reversal, reversal_of_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         user_id,
                         reversal_uuid,
-                        current_date,
+                        original_transaction_date,  # Use original transaction's date
                         entry['account'],
                         f"REVERSAL OF: {entry['description']}",
-                        entry['credit'],  # Swap: old credit becomes new debit
-                        entry['debit'],   # Swap: old debit becomes new credit
+                        new_debit,  # Swap: old credit becomes new debit
+                        new_credit,   # Swap: old debit becomes new credit
                         entry['category_id'],  # Preserve category for analytics
                         True,             # Mark as reversal
                         entry['entry_id'] # Link to original entry
@@ -1210,7 +1283,7 @@ class BusinessSimulator:
         if not cursor:
             conn, cursor = self._get_db_connection()
         try:
-            amount = Decimal(amount)
+            amount = float(amount)
             if amount <= 0: return False, "Income amount must be positive."
 
             cursor.execute("SELECT * FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
@@ -1218,7 +1291,7 @@ class BusinessSimulator:
             if not account:
                 return False, "Invalid account specified."
 
-            new_balance = float(self._from_money_str(account['balance'])) + amount
+            new_balance = float(account['balance']) + amount
 
             # If transaction_date is provided, use it; otherwise get current user date
             if transaction_date:
@@ -1239,7 +1312,7 @@ class BusinessSimulator:
             cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0))
             cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount))
 
-            cursor.execute("UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?", (new_balance, account_id, user_id))
+            # Balance is now calculated from ledger - no manual update needed
             if conn: conn.commit()
             return True, f"Successfully logged income to '{account['name']}'."
 
@@ -1407,19 +1480,15 @@ class BusinessSimulator:
             if not 1 <= deposit_day_of_month <= 31:
                 return False, "Deposit day must be between 1 and 31."
 
-            # Debug: Check if the record exists first
+            # Check if the record exists first
             cursor.execute("SELECT income_id, user_id FROM recurring_income WHERE income_id = ?", (income_id,))
             existing = self._row_to_dict(cursor.fetchone())
-            print(f"DEBUG update_recurring_income: Looking for income_id={income_id}, user_id={user_id}")
-            print(f"DEBUG update_recurring_income: Found record: {existing}")
 
             cursor.execute(
                 "UPDATE recurring_income SET description = ?, amount = ?, deposit_day_of_month = ?, is_variable = ?, estimated_amount = ? "
                 "WHERE income_id = ? AND user_id = ?",
                 (description, amount, deposit_day_of_month, is_variable, estimated_amount, income_id, user_id)
             )
-
-            print(f"DEBUG update_recurring_income: UPDATE affected {cursor.rowcount} rows")
 
             if cursor.rowcount == 0:
                 return False, f"Income not found or you do not have permission to update it. (income_id={income_id}, user_id={user_id})"
@@ -1487,7 +1556,7 @@ class BusinessSimulator:
         """Transfer money between two accounts."""
         conn, cursor = self._get_db_connection()
         try:
-            amount = Decimal(amount)
+            amount = float(amount)
             if amount <= 0:
                 return False, "Transfer amount must be positive."
 
@@ -1504,16 +1573,21 @@ class BusinessSimulator:
             from_account = next((acc for acc in accounts if acc['account_id'] == from_account_id), None)
             to_account = next((acc for acc in accounts if acc['account_id'] == to_account_id), None)
 
+            # Convert balances to float for calculations
+            from_balance = float(from_account['balance'])
+            to_balance = float(to_account['balance'])
+
             # Check if from_account has sufficient balance
             if from_account['type'] == 'CREDIT_CARD':
-                if from_account['credit_limit'] is not None and (from_account['balance'] - amount) < -from_account['credit_limit']:
+                credit_limit = float(from_account['credit_limit']) if from_account['credit_limit'] is not None else None
+                if credit_limit is not None and (from_balance - amount) < -credit_limit:
                     return False, "Transfer declined. Would exceed credit limit."
-            elif from_account['balance'] < amount:
+            elif from_balance < amount:
                 return False, "Insufficient funds for transfer."
 
             # Calculate new balances
-            new_from_balance = from_account['balance'] - amount
-            new_to_balance = to_account['balance'] + amount
+            new_from_balance = from_balance - amount
+            new_to_balance = to_balance + amount
 
             # Get transaction date
             if transaction_date:
@@ -1535,15 +1609,7 @@ class BusinessSimulator:
             cursor.execute(fin_query, (user_id, uuid, current_date, to_account['name'], description, amount, 0))
             cursor.execute(fin_query, (user_id, uuid, current_date, from_account['name'], description, 0, amount))
 
-            # Update account balances
-            cursor.execute(
-                "UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?",
-                (new_from_balance, from_account_id, user_id)
-            )
-            cursor.execute(
-                "UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?",
-                (new_to_balance, to_account_id, user_id)
-            )
+            # Balance is now calculated from ledger - no manual update needed
 
             conn.commit()
             return True, f"Successfully transferred {amount} from '{from_account['name']}' to '{to_account['name']}'."
@@ -1560,20 +1626,22 @@ class BusinessSimulator:
         if not cursor:
             conn, cursor = self._get_db_connection()
         try:
-            amount = Decimal(amount)
+            amount = float(amount)
             if amount <= 0: return False, "Expense amount must be positive."
 
             cursor.execute("SELECT * FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
             account = cursor.fetchone()
             if not account: return False, "Invalid account specified."
 
+            balance = float(account['balance'])
             if account['type'] == 'CREDIT_CARD':
-                if account['credit_limit'] is not None and (account['balance'] - amount) < -account['credit_limit']:
+                credit_limit = float(account['credit_limit']) if account['credit_limit'] is not None else None
+                if credit_limit is not None and (balance - amount) < -credit_limit:
                     return False, "Transaction declined. Exceeds credit limit."
-            elif account['balance'] < amount:
+            elif balance < amount:
                 return False, "Insufficient funds."
 
-            new_balance = account['balance'] - amount
+            new_balance = balance - amount
 
             # If transaction_date is provided, use it; otherwise get current user date
             if transaction_date:
@@ -1598,7 +1666,7 @@ class BusinessSimulator:
             cursor.execute(fin_query, (user_id, uuid, current_date, 'Expenses', description, amount, 0, category_id))
             cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, 0, amount, None))
 
-            cursor.execute("UPDATE accounts SET balance = ? WHERE account_id = ? AND user_id = ?", (new_balance, account_id, user_id))
+            # Balance is now calculated from ledger - no manual update needed
 
             if conn: # Only commit if this function owns the connection
                 conn.commit()
@@ -1817,14 +1885,15 @@ class BusinessSimulator:
         Returns:
             tuple: (success bool, message str)
         """
-        interest_amount = Decimal(interest_amount) if interest_amount else Decimal('0')
-        principal_amount = Decimal(principal_amount) if principal_amount else Decimal('0')
-        escrow_amount = Decimal(escrow_amount) if escrow_amount else Decimal('0')
+        interest_amount = float(interest_amount) if interest_amount else 0.0
+        principal_amount = float(principal_amount) if principal_amount else 0.0
+        escrow_amount = float(escrow_amount) if escrow_amount else 0.0
 
         conn, cursor = self._get_db_connection()
         try:
             if payment_date is None:
-                payment_date = self._get_user_current_date(cursor, user_id)
+                current_date_str = self._get_user_current_date(cursor, user_id)
+                payment_date = self._from_datetime_str(current_date_str)
 
             # Get loan/credit card account details
             cursor.execute("""
@@ -1865,7 +1934,7 @@ class BusinessSimulator:
             total_payment = interest_amount + principal_amount + escrow_amount
             if other_amounts:
                 for item in other_amounts:
-                    total_payment += Decimal(item['amount'])
+                    total_payment += float(item['amount'])
 
             # Create ledger entries - each component gets its own UUID for independent ledger display
             # 1. Interest Expense transaction (DR Expenses, CR Payment Account)
@@ -1953,7 +2022,7 @@ class BusinessSimulator:
                     fees_category_id = fees_cat['category_id']
 
                 for item in other_amounts:
-                    amount = Decimal(item['amount'])
+                    amount = float(item['amount'])
                     if amount > 0:
                         fee_uuid = str(uuid4())
                         # DR Fee Expense
@@ -1971,19 +2040,15 @@ class BusinessSimulator:
                         """, (user_id, fee_uuid, payment_date, payment_acct['name'],
                               f"{loan_account['name']} - {item['label']}", amount))
 
-            # Update account balances
-            # Principal reduces the loan/credit card balance (increases it since it's negative)
-            if principal_amount > 0:
-                cursor.execute("UPDATE accounts SET balance = balance + ? WHERE account_id = ?",
-                              (principal_amount, loan_id))
+            # Balance is now calculated from ledger - no manual update needed
 
-            # Total payment reduces cash account
-            cursor.execute("UPDATE accounts SET balance = balance - ? WHERE account_id = ?",
-                          (total_payment, payment_account_id))
-
-            # Fetch new loan balance
-            cursor.execute("SELECT balance FROM accounts WHERE account_id = ?", (loan_id,))
-            new_balance = abs(self._row_to_dict(cursor.fetchone())['balance'])
+            # Fetch new loan balance (calculated from ledger)
+            cursor.execute(
+                "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as ledger_balance "
+                "FROM financial_ledger WHERE user_id = ? AND account = ?",
+                (user_id, loan_account['name'])
+            )
+            new_balance = abs(float(self._row_to_dict(cursor.fetchone())['ledger_balance'] or 0))
 
             conn.commit()
 
@@ -1997,15 +2062,15 @@ class BusinessSimulator:
                 msg_parts.append(f"${escrow_amount:,.2f} escrow")
             if other_amounts:
                 for item in other_amounts:
-                    if Decimal(item['amount']) > 0:
-                        msg_parts.append(f"${Decimal(item['amount']):,.2f} {item['label']}")
+                    if float(item['amount']) > 0:
+                        msg_parts.append(f"${float(item['amount']):,.2f} {item['label']}")
 
             msg = f"Payment processed: {', '.join(msg_parts)}. New balance: ${new_balance:,.2f}"
             return True, msg
 
         except Exception as e:
             conn.rollback()
-            print(f"ERROR in make_loan_payment: {e}")
+            # Error in make_loan_payment
             import traceback
             traceback.print_exc()
             return False, f"An unexpected error occurred: {e}"
