@@ -421,7 +421,9 @@ The database follows **normalized design principles** with referential integrity
 | `users` | Authentication | user_id, username, password_hash |
 | `accounts` | Financial accounts | account_id, user_id, name, type, balance |
 | `financial_ledger` | **Double-entry ledger** | entry_id, user_id, transaction_uuid, account, debit, credit, category_id, is_reversal, reversal_of_id |
-| `expense_categories` | Custom categories | category_id, user_id, name, color |
+| `parent_categories` | Category hierarchy | parent_id, name, type (income/expense/both), display_order |
+| `expense_categories` | Expense categories | category_id, user_id, name, color, parent_id |
+| `income_categories` | Income categories | category_id, user_id, name, color, parent_id |
 | `recurring_expenses` | Automated bills | expense_id, user_id, description, amount, due_day_of_month, category_id |
 | `recurring_income` | Automated income | income_id, user_id, description, amount, day_of_month |
 | `loans` | Debt tracking | loan_id, user_id, outstanding_balance, monthly_payment |
@@ -509,7 +511,12 @@ See full API documentation in the original README or via Swagger (coming soon).
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v3.1 - Auto-Backup Release)
+### ✅ Current Features (v3.2 - Category Overhaul Release)
+- ✅ **Category System Overhaul** - Separate income and expense categories with parent groups
+- ✅ **Parent Category Groups** - Organize categories hierarchically (Home, Food, Transportation, etc.)
+- ✅ **Full Group Management** - Add, edit, delete groups; assign categories via dropdown
+- ✅ **Income Categories** - Dedicated income category management with parent support
+- ✅ **Delete Warnings** - Shows transaction count before moving to Uncategorized
 - ✅ **Fully Portable** - SQLite single-file database
 - ✅ **Cross-Platform** - Mac and Windows support
 - ✅ **One-Click Startup** - Simple launcher scripts
@@ -532,9 +539,10 @@ See full API documentation in the original README or via Swagger (coming soon).
 - ✅ Expense analysis with drill-down
 - ✅ CSV export
 
-### 🔮 Planned Features (v3.2)
+### 🔮 Planned Features (v3.3)
 - [ ] **Power BI Dashboard Integration** - ODBC connection to SQLite
 - [ ] **Demo Mode** - Fake data for portfolio showcase
+- [ ] **Bi-weekly/Custom Recurring** - Support for 14-day and custom interval recurring transactions
 - [ ] Budget planning and alerts
 - [ ] Financial goal tracking
 - [ ] PDF reports

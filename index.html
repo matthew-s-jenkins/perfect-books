@@ -2791,12 +2791,68 @@
         }
 
         function CategoriesPage({ categories, onDataChange, showToast }) {
+            const [activeTab, setActiveTab] = useState('expense');
+            const [incomeCategories, setIncomeCategories] = useState([]);
+            const [parentCategories, setParentCategories] = useState([]);
             const [isAdding, setIsAdding] = useState(false);
             const [editingId, setEditingId] = useState(null);
             const [newName, setNewName] = useState('');
             const [newColor, setNewColor] = useState('#6366f1');
+            const [newParentId, setNewParentId] = useState('');
             const [editingName, setEditingName] = useState('');
             const [editingColor, setEditingColor] = useState('');
+            const [editingParentId, setEditingParentId] = useState('');
+
+            // Parent category management state
+            const [isAddingParent, setIsAddingParent] = useState(false);
+            const [editingParentCatId, setEditingParentCatId] = useState(null);
+            const [newParentName, setNewParentName] = useState('');
+            const [newParentType, setNewParentType] = useState('expense');
+            const [editingParentName, setEditingParentName] = useState('');
+            const [editingParentType, setEditingParentType] = useState('');
+
+            // Load income and parent categories
+            useEffect(() => {
+                refreshIncomeCategories();
+                refreshParentCategories();
+            }, []);
+
+            const refreshIncomeCategories = async () => {
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/income_categories`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setIncomeCategories(data);
+                    }
+                } catch (err) {
+                    console.error('Error loading income categories:', err);
+                }
+            };
+
+            const refreshParentCategories = async () => {
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/parent_categories`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setParentCategories(data);
+                    }
+                } catch (err) {
+                    console.error('Error loading parent categories:', err);
+                }
+            };
+
+            const getFilteredParents = () => {
+                if (activeTab === 'groups') return parentCategories;
+                // Filter and sort: type-specific first, then "both" at the end
+                const filtered = parentCategories.filter(p => p.type === activeTab || p.type === 'both');
+                return filtered.sort((a, b) => {
+                    // Type-specific comes before "both"
+                    if (a.type === activeTab && b.type === 'both') return -1;
+                    if (a.type === 'both' && b.type === activeTab) return 1;
+                    // Otherwise sort by display_order
+                    return (a.display_order || 0) - (b.display_order || 0);
+                });
+            };
 
             const handleAdd = async () => {
                 if (!newName.trim()) {
@@ -2804,19 +2860,31 @@
                     return;
                 }
 
+                const endpoint = activeTab === 'expense' ? '/api/expense_categories' : '/api/income_categories';
+                const defaultColor = activeTab === 'expense' ? '#6366f1' : '#10b981';
+
                 try {
-                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories`, {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}${endpoint}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: newName, color: newColor })
+                        body: JSON.stringify({
+                            name: newName,
+                            color: newColor || defaultColor,
+                            parent_id: newParentId || null
+                        })
                     });
                     const result = await response.json();
                     if (result.success) {
                         showToast('Category added successfully', 'success');
                         setNewName('');
-                        setNewColor('#6366f1');
+                        setNewColor(activeTab === 'expense' ? '#6366f1' : '#10b981');
+                        setNewParentId('');
                         setIsAdding(false);
-                        onDataChange();
+                        if (activeTab === 'expense') {
+                            onDataChange();
+                        } else {
+                            refreshIncomeCategories();
+                        }
                     } else {
                         showToast(result.message, 'error');
                     }
@@ -2826,17 +2894,29 @@
             };
 
             const handleUpdate = async (categoryId) => {
+                const endpoint = activeTab === 'expense'
+                    ? `/api/expense_categories/${categoryId}`
+                    : `/api/income_categories/${categoryId}`;
+
                 try {
-                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories/${categoryId}`, {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}${endpoint}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: editingName, color: editingColor })
+                        body: JSON.stringify({
+                            name: editingName,
+                            color: editingColor,
+                            parent_id: editingParentId || null
+                        })
                     });
                     const result = await response.json();
                     if (result.success) {
                         showToast('Category updated successfully', 'success');
                         setEditingId(null);
-                        onDataChange();
+                        if (activeTab === 'expense') {
+                            onDataChange();
+                        } else {
+                            refreshIncomeCategories();
+                        }
                     } else {
                         showToast(result.message, 'error');
                     }
@@ -2851,18 +2931,51 @@
                     return;
                 }
 
-                if (!confirm(`Delete category "${categoryName}"? All expenses will be moved to Uncategorized.`)) {
+                // For expense categories, get transaction count first
+                let transactionCount = 0;
+                if (activeTab === 'expense') {
+                    try {
+                        const countResponse = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories/${categoryId}/transaction_count`);
+                        if (countResponse.ok) {
+                            const countData = await countResponse.json();
+                            transactionCount = countData.count;
+                        }
+                    } catch (err) {
+                        console.error('Error getting transaction count:', err);
+                    }
+                }
+
+                let message;
+                if (activeTab === 'expense') {
+                    if (transactionCount > 0) {
+                        message = `Delete category "${categoryName}"?\n\n⚠️ ${transactionCount} transaction${transactionCount === 1 ? '' : 's'} will be moved to Uncategorized.`;
+                    } else {
+                        message = `Delete category "${categoryName}"?`;
+                    }
+                } else {
+                    message = `Delete category "${categoryName}"?`;
+                }
+
+                if (!confirm(message)) {
                     return;
                 }
 
+                const endpoint = activeTab === 'expense'
+                    ? `/api/expense_categories/${categoryId}`
+                    : `/api/income_categories/${categoryId}`;
+
                 try {
-                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories/${categoryId}`, {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}${endpoint}`, {
                         method: 'DELETE'
                     });
                     const result = await response.json();
                     if (result.success) {
                         showToast('Category deleted successfully', 'success');
-                        onDataChange();
+                        if (activeTab === 'expense') {
+                            onDataChange();
+                        } else {
+                            refreshIncomeCategories();
+                        }
                     } else {
                         showToast(result.message, 'error');
                     }
@@ -2871,75 +2984,393 @@
                 }
             };
 
+            // Parent category handlers
+            const handleAddParent = async () => {
+                if (!newParentName.trim()) {
+                    showToast('Please enter a group name', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/parent_categories`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: newParentName, type: newParentType })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('Group added successfully', 'success');
+                        setNewParentName('');
+                        setNewParentType('expense');
+                        setIsAddingParent(false);
+                        refreshParentCategories();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } catch (err) {
+                    showToast('Error adding group', 'error');
+                }
+            };
+
+            const handleUpdateParent = async (parentId) => {
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/parent_categories/${parentId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: editingParentName, type: editingParentType })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('Group updated successfully', 'success');
+                        setEditingParentCatId(null);
+                        refreshParentCategories();
+                        onDataChange();
+                        refreshIncomeCategories();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } catch (err) {
+                    showToast('Error updating group', 'error');
+                }
+            };
+
+            const handleDeleteParent = async (parentId, parentName) => {
+                if (!confirm(`Delete group "${parentName}"? This will only work if no categories are using it.`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/parent_categories/${parentId}`, {
+                        method: 'DELETE'
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('Group deleted successfully', 'success');
+                        refreshParentCategories();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } catch (err) {
+                    showToast('Error deleting group', 'error');
+                }
+            };
+
+            // Group categories by parent
+            const groupByParent = (cats) => {
+                const groups = {};
+                // First, create groups in parent display order
+                const filteredParents = getFilteredParents();
+                filteredParents.forEach(p => {
+                    groups[p.name] = [];
+                });
+                // Add "Ungrouped" at the end
+                groups['Ungrouped'] = [];
+                // Assign categories to groups
+                cats.forEach(cat => {
+                    const parent = cat.parent_name || 'Ungrouped';
+                    if (!groups[parent]) groups[parent] = [];
+                    groups[parent].push(cat);
+                });
+                // Remove empty groups except Ungrouped
+                Object.keys(groups).forEach(key => {
+                    if (groups[key].length === 0 && key !== 'Ungrouped') {
+                        delete groups[key];
+                    }
+                });
+                // Remove Ungrouped if empty
+                if (groups['Ungrouped'] && groups['Ungrouped'].length === 0) {
+                    delete groups['Ungrouped'];
+                }
+                return groups;
+            };
+
+            const currentCategories = activeTab === 'expense' ? categories : incomeCategories;
+            const groupedCategories = groupByParent(currentCategories);
+
+            const startEditing = (cat) => {
+                setEditingId(cat.category_id);
+                setEditingName(cat.name);
+                setEditingColor(cat.color);
+                setEditingParentId(cat.parent_id || '');
+            };
+
+            const renderCategoryList = (cats) => (
+                <div className="space-y-2">
+                    {cats.map(cat => (
+                        <div key={cat.category_id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
+                            {editingId === cat.category_id ? (
+                                <div className="flex items-center space-x-3 flex-1 flex-wrap gap-2">
+                                    <input type="color" value={editingColor} onChange={(e) => setEditingColor(e.target.value)} className="bg-gray-800 p-1 rounded h-8 w-12"/>
+                                    <input type="text" value={editingName} onChange={(e) => setEditingName(e.target.value)} className="flex-1 min-w-32 bg-gray-800 text-white p-2 rounded"/>
+                                    <select
+                                        value={editingParentId}
+                                        onChange={(e) => setEditingParentId(e.target.value)}
+                                        className="bg-gray-800 text-white p-2 rounded"
+                                    >
+                                        <option value="">No Group</option>
+                                        {getFilteredParents().map(p => (
+                                            <option key={p.parent_id} value={p.parent_id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                    <button onClick={() => handleUpdate(cat.category_id)} className="text-green-400 hover:text-green-300 text-sm font-semibold">Save</button>
+                                    <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-300 text-sm font-semibold">Cancel</button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-center space-x-3">
+                                        <div
+                                            className="w-6 h-6 rounded cursor-pointer hover:ring-2 hover:ring-white transition-all"
+                                            style={{backgroundColor: cat.color}}
+                                            onClick={() => startEditing(cat)}
+                                            title="Click to edit"
+                                        />
+                                        <span className="text-white">{cat.name}</span>
+                                        {!!cat.is_default && <span className="text-xs text-gray-400 bg-gray-600 px-2 py-0.5 rounded">Default</span>}
+                                    </div>
+                                    <div className="flex space-x-3">
+                                        <button onClick={() => startEditing(cat)} className="text-cyan-400 hover:text-cyan-300 text-sm">Edit</button>
+                                        {!cat.is_default && (
+                                            <button onClick={() => handleDelete(cat.category_id, cat.name, cat.is_default)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const getTypeLabel = (type) => {
+                if (type === 'income') return 'Income';
+                if (type === 'expense') return 'Expense';
+                return 'Both';
+            };
+
+            const getTypeBadgeColor = (type) => {
+                if (type === 'income') return 'bg-green-600';
+                if (type === 'expense') return 'bg-red-600';
+                return 'bg-purple-600';
+            };
+
+            // Count categories using each parent
+            const getParentUsageCount = (parentId) => {
+                const expenseCount = categories.filter(c => c.parent_id === parentId).length;
+                const incomeCount = incomeCategories.filter(c => c.parent_id === parentId).length;
+                return expenseCount + incomeCount;
+            };
+
             return (
                 <div className="bg-gray-800 shadow rounded-lg p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-white">Expense Categories</h2>
-                        <button onClick={() => setIsAdding(!isAdding)} className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">
-                            {isAdding ? 'Cancel' : '+ Add Category'}
+                    {/* Tab Navigation */}
+                    <div className="flex space-x-1 mb-6 bg-gray-700 p-1 rounded-lg w-fit">
+                        <button
+                            onClick={() => { setActiveTab('expense'); setIsAdding(false); setEditingId(null); }}
+                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                activeTab === 'expense'
+                                    ? 'bg-red-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Expense
+                        </button>
+                        <button
+                            onClick={() => { setActiveTab('income'); setIsAdding(false); setEditingId(null); }}
+                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                activeTab === 'income'
+                                    ? 'bg-green-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Income
+                        </button>
+                        <button
+                            onClick={() => { setActiveTab('groups'); setIsAdding(false); setEditingId(null); setIsAddingParent(false); }}
+                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                activeTab === 'groups'
+                                    ? 'bg-purple-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Groups
                         </button>
                     </div>
 
-                    {isAdding && (
-                        <div className="bg-gray-700 p-4 rounded-lg mb-6">
-                            <h3 className="text-white font-medium mb-3">New Category</h3>
-                            <div className="flex items-end space-x-4">
-                                <div className="flex-1">
-                                    <label className="block text-gray-400 text-sm mb-1">Name</label>
-                                    <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full bg-gray-800 text-white p-2 rounded" placeholder="Category name"/>
-                                </div>
-                                <div>
-                                    <label className="block text-gray-400 text-sm mb-1">Color</label>
-                                    <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} className="bg-gray-800 p-1 rounded h-10 w-20"/>
-                                </div>
-                                <button onClick={handleAdd} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded">Add</button>
+                    {/* Groups Tab Content */}
+                    {activeTab === 'groups' && (
+                        <>
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold text-white">Category Groups</h2>
+                                <button
+                                    onClick={() => setIsAddingParent(!isAddingParent)}
+                                    className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded"
+                                >
+                                    {isAddingParent ? 'Cancel' : '+ Add Group'}
+                                </button>
                             </div>
-                        </div>
-                    )}
 
-                    <div className="space-y-2">
-                        {categories.map(cat => (
-                            <div key={cat.category_id} className="flex items-center justify-between bg-gray-700 p-4 rounded-lg">
-                                {editingId === cat.category_id ? (
-                                    <>
-                                        <div className="flex items-center space-x-4 flex-1">
-                                            <input type="color" value={editingColor} onChange={(e) => setEditingColor(e.target.value)} className="bg-gray-800 p-1 rounded h-10 w-20"/>
-                                            <input type="text" value={editingName} onChange={(e) => setEditingName(e.target.value)} className="flex-1 bg-gray-800 text-white p-2 rounded"/>
+                            {isAddingParent && (
+                                <div className="bg-gray-700 p-4 rounded-lg mb-6">
+                                    <h3 className="text-white font-medium mb-3">New Category Group</h3>
+                                    <div className="flex items-end space-x-4">
+                                        <div className="flex-1">
+                                            <label className="block text-gray-400 text-sm mb-1">Group Name</label>
+                                            <input
+                                                type="text"
+                                                value={newParentName}
+                                                onChange={(e) => setNewParentName(e.target.value)}
+                                                className="w-full bg-gray-800 text-white p-2 rounded"
+                                                placeholder="e.g., Business, Travel"
+                                            />
                                         </div>
-                                        <div className="flex space-x-2 ml-4">
-                                            <button onClick={() => handleUpdate(cat.category_id)} className="text-green-400 hover:text-green-300 text-sm font-semibold">Save</button>
-                                            <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-300 text-sm font-semibold">Cancel</button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="flex items-center space-x-4">
-                                            <div
-                                                className="w-8 h-8 rounded cursor-pointer hover:ring-2 hover:ring-white transition-all relative group"
-                                                style={{backgroundColor: cat.color}}
-                                                onClick={() => { setEditingId(cat.category_id); setEditingName(cat.name); setEditingColor(cat.color); }}
-                                                title="Click to change color"
+                                        <div>
+                                            <label className="block text-gray-400 text-sm mb-1">Type</label>
+                                            <select
+                                                value={newParentType}
+                                                onChange={(e) => setNewParentType(e.target.value)}
+                                                className="bg-gray-800 text-white p-2 rounded"
                                             >
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <svg className="w-4 h-4 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
-                                                    </svg>
-                                                </div>
+                                                <option value="expense">Expense Only</option>
+                                                <option value="income">Income Only</option>
+                                                <option value="both">Both</option>
+                                            </select>
+                                        </div>
+                                        <button onClick={handleAddParent} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded">Add</button>
+                                        <button onClick={() => { setIsAddingParent(false); setNewParentName(''); }} className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <p className="text-gray-400 text-sm mb-4">
+                                Groups organize your categories. A group can be used for expenses, income, or both.
+                            </p>
+
+                            <div className="space-y-2">
+                                {/* Sort: expense first, then both, then income */}
+                                {[...parentCategories].sort((a, b) => {
+                                    const order = { expense: 0, both: 1, income: 2 };
+                                    return (order[a.type] || 0) - (order[b.type] || 0);
+                                }).map(parent => (
+                                    <div key={parent.parent_id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
+                                        {editingParentCatId === parent.parent_id ? (
+                                            <div className="flex items-center space-x-3 flex-1 flex-wrap gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={editingParentName}
+                                                    onChange={(e) => setEditingParentName(e.target.value)}
+                                                    className="flex-1 min-w-32 bg-gray-800 text-white p-2 rounded"
+                                                />
+                                                <select
+                                                    value={editingParentType}
+                                                    onChange={(e) => setEditingParentType(e.target.value)}
+                                                    className="bg-gray-800 text-white p-2 rounded"
+                                                >
+                                                    <option value="expense">Expense Only</option>
+                                                    <option value="income">Income Only</option>
+                                                    <option value="both">Both</option>
+                                                </select>
+                                                <button onClick={() => handleUpdateParent(parent.parent_id)} className="text-green-400 hover:text-green-300 text-sm font-semibold">Save</button>
+                                                <button onClick={() => setEditingParentCatId(null)} className="text-gray-400 hover:text-gray-300 text-sm font-semibold">Cancel</button>
                                             </div>
-                                            <span className="text-white font-medium">{cat.name}</span>
-                                            {!!cat.is_default && <span className="text-xs text-gray-400 bg-gray-600 px-2 py-1 rounded">Default</span>}
-                                        </div>
-                                        <div className="flex space-x-3">
-                                            <button onClick={() => { setEditingId(cat.category_id); setEditingName(cat.name); setEditingColor(cat.color); }} className="text-cyan-400 hover:text-cyan-300 text-sm">Edit</button>
-                                            {!cat.is_default && (
-                                                <button onClick={() => handleDelete(cat.category_id, cat.name, cat.is_default)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
-                                            )}
-                                        </div>
-                                    </>
+                                        ) : (
+                                            <>
+                                                <div className="flex items-center space-x-3">
+                                                    <span className="text-white font-medium">{parent.name}</span>
+                                                    <span className={`text-xs text-white px-2 py-0.5 rounded ${getTypeBadgeColor(parent.type)}`}>
+                                                        {getTypeLabel(parent.type)}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">
+                                                        ({getParentUsageCount(parent.parent_id)} categories)
+                                                    </span>
+                                                </div>
+                                                <div className="flex space-x-3">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingParentCatId(parent.parent_id);
+                                                            setEditingParentName(parent.name);
+                                                            setEditingParentType(parent.type);
+                                                        }}
+                                                        className="text-cyan-400 hover:text-cyan-300 text-sm"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteParent(parent.parent_id, parent.name)}
+                                                        className="text-red-400 hover:text-red-300 text-sm"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                ))}
+                                {parentCategories.length === 0 && (
+                                    <p className="text-gray-500 text-center py-8">No groups yet. Add one above!</p>
                                 )}
                             </div>
-                        ))}
-                    </div>
+                        </>
+                    )}
+
+                    {/* Expense/Income Tab Content */}
+                    {activeTab !== 'groups' && (
+                        <>
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold text-white">
+                                    {activeTab === 'expense' ? 'Expense Categories' : 'Income Categories'}
+                                </h2>
+                                <button
+                                    onClick={() => { setIsAdding(!isAdding); setNewColor(activeTab === 'expense' ? '#6366f1' : '#10b981'); setNewParentId(''); }}
+                                    className={`${activeTab === 'expense' ? 'bg-red-600 hover:bg-red-500' : 'bg-green-600 hover:bg-green-500'} text-white font-bold py-2 px-4 rounded`}
+                                >
+                                    {isAdding ? 'Cancel' : '+ Add Category'}
+                                </button>
+                            </div>
+
+                            {isAdding && (
+                                <div className="bg-gray-700 p-4 rounded-lg mb-6">
+                                    <h3 className="text-white font-medium mb-3">New {activeTab === 'expense' ? 'Expense' : 'Income'} Category</h3>
+                                    <div className="flex items-end space-x-4 flex-wrap gap-2">
+                                        <div className="flex-1 min-w-48">
+                                            <label className="block text-gray-400 text-sm mb-1">Name</label>
+                                            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full bg-gray-800 text-white p-2 rounded" placeholder="Category name"/>
+                                        </div>
+                                        <div>
+                                            <label className="block text-gray-400 text-sm mb-1">Color</label>
+                                            <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} className="bg-gray-800 p-1 rounded h-10 w-16"/>
+                                        </div>
+                                        <div>
+                                            <label className="block text-gray-400 text-sm mb-1">Group</label>
+                                            <select
+                                                value={newParentId}
+                                                onChange={(e) => setNewParentId(e.target.value)}
+                                                className="bg-gray-800 text-white p-2 rounded"
+                                            >
+                                                <option value="">No Group</option>
+                                                {getFilteredParents().map(p => (
+                                                    <option key={p.parent_id} value={p.parent_id}>{p.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <button onClick={handleAdd} className={`${activeTab === 'expense' ? 'bg-red-600 hover:bg-red-500' : 'bg-green-600 hover:bg-green-500'} text-white px-4 py-2 rounded`}>Add</button>
+                                        <button onClick={() => { setIsAdding(false); setNewName(''); setNewParentId(''); }} className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Grouped Categories */}
+                            <div className="space-y-6">
+                                {Object.entries(groupedCategories).map(([parentName, cats]) => (
+                                    <div key={parentName}>
+                                        <h3 className="text-gray-400 text-sm font-semibold uppercase tracking-wide mb-2">{parentName}</h3>
+                                        {renderCategoryList(cats)}
+                                    </div>
+                                ))}
+                                {Object.keys(groupedCategories).length === 0 && (
+                                    <p className="text-gray-500 text-center py-8">No categories yet. Add one above!</p>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
             );
         }

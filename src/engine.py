@@ -690,7 +690,12 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                "SELECT category_id, name, color, is_default, is_monthly FROM expense_categories WHERE user_id = ? ORDER BY is_default DESC, name ASC",
+                """SELECT ec.category_id, ec.name, ec.color, ec.is_default, ec.is_monthly, ec.description,
+                          pc.name as parent_name, pc.parent_id
+                   FROM expense_categories ec
+                   LEFT JOIN parent_categories pc ON ec.parent_id = pc.parent_id
+                   WHERE ec.user_id = ?
+                   ORDER BY pc.display_order, ec.is_default DESC, ec.name ASC""",
                 (user_id,)
             )
             return self._rows_to_dicts(cursor.fetchall())
@@ -756,6 +761,20 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
+    def get_category_transaction_count(self, user_id, category_id):
+        """Get the count of transactions using a specific category."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute(
+                "SELECT COUNT(DISTINCT transaction_uuid) FROM financial_ledger WHERE user_id = ? AND category_id = ?",
+                (user_id, category_id)
+            )
+            count = cursor.fetchone()[0]
+            return count
+        finally:
+            cursor.close()
+            conn.close()
+
     def delete_expense_category(self, user_id, category_id):
         """Delete an expense category (reassign to default first)."""
         conn, cursor = self._get_db_connection()
@@ -792,6 +811,212 @@ class BusinessSimulator:
         except Exception as e:
             conn.rollback()
             return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    # --- INCOME CATEGORY METHODS ---
+    def get_income_categories(self, user_id):
+        """Get all income categories for a user."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute(
+                """SELECT ic.category_id, ic.name, ic.color, ic.is_default, ic.description,
+                          pc.name as parent_name, pc.parent_id
+                   FROM income_categories ic
+                   LEFT JOIN parent_categories pc ON ic.parent_id = pc.parent_id
+                   WHERE ic.user_id = ?
+                   ORDER BY pc.display_order, ic.name ASC""",
+                (user_id,)
+            )
+            return self._rows_to_dicts(cursor.fetchall())
+        finally:
+            cursor.close()
+            conn.close()
+
+    def add_income_category(self, user_id, name, color='#10b981', parent_id=None, description=None):
+        """Add a new income category."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute(
+                "INSERT INTO income_categories (user_id, name, color, parent_id, description) VALUES (?, ?, ?, ?, ?)",
+                (user_id, name, color, parent_id, description)
+            )
+            conn.commit()
+            return True, "Income category added successfully.", cursor.lastrowid
+        except Exception as e:
+            conn.rollback()
+            if "UNIQUE constraint" in str(e):
+                return False, "An income category with this name already exists.", None
+            return False, f"An error occurred: {e}", None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_income_category(self, user_id, category_id, name, color, parent_id=None, description=None):
+        """Update an income category."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute(
+                "SELECT user_id FROM income_categories WHERE category_id = ?",
+                (category_id,)
+            )
+            result = self._row_to_dict(cursor.fetchone())
+            if not result or str(result['user_id']) != str(user_id):
+                return False, "Category not found or you don't have permission to edit it."
+
+            cursor.execute(
+                "UPDATE income_categories SET name = ?, color = ?, parent_id = ?, description = ? WHERE category_id = ?",
+                (name, color, parent_id, description, category_id)
+            )
+            conn.commit()
+            return True, "Income category updated successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_income_category(self, user_id, category_id):
+        """Delete an income category."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute(
+                "SELECT user_id, is_default FROM income_categories WHERE category_id = ?",
+                (category_id,)
+            )
+            result = self._row_to_dict(cursor.fetchone())
+            if not result:
+                return False, "Category not found."
+            if str(result['user_id']) != str(user_id):
+                return False, "You don't have permission to delete this category."
+            if result['is_default']:
+                return False, "Cannot delete the default category."
+
+            cursor.execute(
+                "DELETE FROM income_categories WHERE category_id = ?",
+                (category_id,)
+            )
+            conn.commit()
+            return True, "Income category deleted successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    # --- PARENT CATEGORY METHODS ---
+    def get_parent_categories(self, cat_type=None):
+        """Get parent categories, optionally filtered by type (income/expense)."""
+        conn, cursor = self._get_db_connection()
+        try:
+            if cat_type:
+                cursor.execute(
+                    "SELECT parent_id, name, type, display_order FROM parent_categories WHERE type = ? OR type = 'both' ORDER BY display_order",
+                    (cat_type,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT parent_id, name, type, display_order FROM parent_categories ORDER BY display_order"
+                )
+            return self._rows_to_dicts(cursor.fetchall())
+        finally:
+            cursor.close()
+            conn.close()
+
+    def add_parent_category(self, name, cat_type, display_order=None):
+        """Add a new parent category."""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get max display_order if not specified
+            if display_order is None:
+                cursor.execute("SELECT MAX(display_order) FROM parent_categories WHERE type = ?", (cat_type,))
+                max_order = cursor.fetchone()[0]
+                display_order = (max_order or 0) + 10
+
+            cursor.execute(
+                "INSERT INTO parent_categories (name, type, display_order) VALUES (?, ?, ?)",
+                (name, cat_type, display_order)
+            )
+            conn.commit()
+            return True, "Parent category added successfully.", cursor.lastrowid
+        except Exception as e:
+            conn.rollback()
+            if "UNIQUE constraint" in str(e):
+                return False, "A parent category with this name already exists.", None
+            return False, f"An error occurred: {e}", None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_parent_category(self, parent_id, name, cat_type, display_order=None):
+        """Update a parent category."""
+        conn, cursor = self._get_db_connection()
+        try:
+            if display_order is not None:
+                cursor.execute(
+                    "UPDATE parent_categories SET name = ?, type = ?, display_order = ? WHERE parent_id = ?",
+                    (name, cat_type, display_order, parent_id)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE parent_categories SET name = ?, type = ? WHERE parent_id = ?",
+                    (name, cat_type, parent_id)
+                )
+            conn.commit()
+            return True, "Parent category updated successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_parent_category(self, parent_id):
+        """Delete a parent category (only if no children)."""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Check for expense category children
+            cursor.execute(
+                "SELECT COUNT(*) FROM expense_categories WHERE parent_id = ?",
+                (parent_id,)
+            )
+            expense_count = cursor.fetchone()[0]
+
+            # Check for income category children
+            cursor.execute(
+                "SELECT COUNT(*) FROM income_categories WHERE parent_id = ?",
+                (parent_id,)
+            )
+            income_count = cursor.fetchone()[0]
+
+            if expense_count > 0 or income_count > 0:
+                return False, f"Cannot delete: {expense_count + income_count} categories are using this parent. Reassign them first."
+
+            cursor.execute(
+                "DELETE FROM parent_categories WHERE parent_id = ?",
+                (parent_id,)
+            )
+            conn.commit()
+            return True, "Parent category deleted successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_parent_category_usage(self, parent_id):
+        """Get count of categories using this parent."""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM expense_categories WHERE parent_id = ?", (parent_id,))
+            expense_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM income_categories WHERE parent_id = ?", (parent_id,))
+            income_count = cursor.fetchone()[0]
+            return {"expense_count": expense_count, "income_count": income_count, "total": expense_count + income_count}
         finally:
             cursor.close()
             conn.close()

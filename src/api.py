@@ -666,6 +666,157 @@ def manage_expense_category_api(category_id):
         else:
             return jsonify({"success": False, "message": message}), 400
 
+@app.route('/api/expense_categories/<int:category_id>/transaction_count', methods=['GET'])
+@check_sim
+@login_required
+def get_expense_category_transaction_count_api(category_id):
+    count = sim.get_category_transaction_count(user_id=current_user.id, category_id=category_id)
+    return jsonify({"count": count})
+
+# --- INCOME CATEGORIES API ROUTES ---
+
+@app.route('/api/income_categories', methods=['GET'])
+@check_sim
+@login_required
+def get_income_categories_api():
+    categories = sim.get_income_categories(user_id=current_user.id)
+    return jsonify(categories)
+
+@app.route('/api/income_categories', methods=['POST'])
+@check_sim
+@login_required
+def add_income_category_api():
+    data = request.get_json()
+    name = data.get('name')
+    color = data.get('color', '#10b981')
+    parent_id = data.get('parent_id')
+    description = data.get('description')
+
+    if not name:
+        return jsonify({"success": False, "message": "Category name is required."}), 400
+
+    success, message, category_id = sim.add_income_category(
+        user_id=current_user.id,
+        name=name,
+        color=color,
+        parent_id=parent_id,
+        description=description
+    )
+    if success:
+        return jsonify({"success": True, "message": message, "category_id": category_id})
+    else:
+        return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/income_categories/<int:category_id>', methods=['PUT', 'DELETE'])
+@check_sim
+@login_required
+def manage_income_category_api(category_id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        name = data.get('name')
+        color = data.get('color')
+        parent_id = data.get('parent_id')
+        description = data.get('description')
+
+        if not all([name, color]):
+            return jsonify({"success": False, "message": "Name and color are required."}), 400
+
+        success, message = sim.update_income_category(
+            user_id=current_user.id,
+            category_id=category_id,
+            name=name,
+            color=color,
+            parent_id=parent_id,
+            description=description
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+
+    elif request.method == 'DELETE':
+        success, message = sim.delete_income_category(
+            user_id=current_user.id,
+            category_id=category_id
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+
+# --- PARENT CATEGORIES API ROUTES ---
+
+@app.route('/api/parent_categories', methods=['GET'])
+@check_sim
+@login_required
+def get_parent_categories_api():
+    cat_type = request.args.get('type')  # Optional: 'income' or 'expense'
+    categories = sim.get_parent_categories(cat_type=cat_type)
+    return jsonify(categories)
+
+@app.route('/api/parent_categories', methods=['POST'])
+@check_sim
+@login_required
+def add_parent_category_api():
+    data = request.get_json()
+    name = data.get('name')
+    cat_type = data.get('type', 'expense')  # 'income', 'expense', or 'both'
+    display_order = data.get('display_order')
+
+    if not name:
+        return jsonify({"success": False, "message": "Parent category name is required."}), 400
+
+    if cat_type not in ['income', 'expense', 'both']:
+        return jsonify({"success": False, "message": "Type must be 'income', 'expense', or 'both'."}), 400
+
+    success, message, parent_id = sim.add_parent_category(
+        name=name,
+        cat_type=cat_type,
+        display_order=display_order
+    )
+    if success:
+        return jsonify({"success": True, "message": message, "parent_id": parent_id})
+    else:
+        return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/parent_categories/<int:parent_id>', methods=['PUT', 'DELETE'])
+@check_sim
+@login_required
+def manage_parent_category_api(parent_id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        name = data.get('name')
+        cat_type = data.get('type')
+        display_order = data.get('display_order')
+
+        if not name or not cat_type:
+            return jsonify({"success": False, "message": "Name and type are required."}), 400
+
+        success, message = sim.update_parent_category(
+            parent_id=parent_id,
+            name=name,
+            cat_type=cat_type,
+            display_order=display_order
+        )
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+
+    elif request.method == 'DELETE':
+        success, message = sim.delete_parent_category(parent_id=parent_id)
+        if success:
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "message": message}), 400
+
+@app.route('/api/parent_categories/<int:parent_id>/usage', methods=['GET'])
+@check_sim
+@login_required
+def get_parent_category_usage_api(parent_id):
+    usage = sim.get_parent_category_usage(parent_id=parent_id)
+    return jsonify(usage)
+
 @app.route('/api/expense_analysis', methods=['GET'])
 @check_sim
 @login_required
