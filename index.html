@@ -2127,11 +2127,13 @@
             const chartInstance = React.useRef(null);
 
             // Initialize selected credit accounts when dashboard data loads
+            // Default to only credit cards (not loans like HELOC/Home Loan)
             useEffect(() => {
                 if (dashboardData?.credit_accounts) {
                     const initialSelection = {};
                     dashboardData.credit_accounts.forEach(account => {
-                        initialSelection[account.account_id] = true; // All selected by default
+                        // Only select CREDIT_CARD accounts by default, not LOANs
+                        initialSelection[account.account_id] = account.type === 'CREDIT_CARD';
                     });
                     setSelectedCreditAccounts(initialSelection);
                 }

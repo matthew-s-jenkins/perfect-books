@@ -2899,7 +2899,11 @@ class BusinessSimulator:
             result = self._row_to_dict(cursor.fetchone())
             starting_balance = self._from_money_str(result['balance_before_period']) if result and result['balance_before_period'] else Decimal('0.0')
 
-            net_worth_trend = []
+            # Start with the balance at the beginning of the period
+            net_worth_trend = [{
+                'date': start_date_str,
+                'net_worth': float(starting_balance)
+            }]
             cumulative = float(starting_balance)
             for row in daily_changes:
                 daily_change = float(self._from_money_str(row['daily_change'])) if row['daily_change'] else 0.0
@@ -3147,7 +3151,12 @@ class BusinessSimulator:
             cumulative_assets = float(starting['starting_assets'] or 0) if starting else 0.0
             cumulative_liabilities = float(starting['starting_liabilities'] or 0) if starting else 0.0
 
-            assets_vs_liabilities = []
+            # Start with the balance at the beginning of the period
+            assets_vs_liabilities = [{
+                'date': start_date_str,
+                'assets': float(cumulative_assets),
+                'liabilities': float(cumulative_liabilities)
+            }]
             for row in daily_balance_changes:
                 cumulative_assets += float(row['asset_change'] or 0)
                 cumulative_liabilities += float(row['liability_change'] or 0)
@@ -3240,7 +3249,10 @@ class BusinessSimulator:
                     'account_id': account_id,
                     'account_name': account_name,
                     'account_type': account_type,
-                    'balances': {}
+                    'starting_balance': cumulative,  # Include starting balance for chart
+                    'balances': {
+                        start_date_str: cumulative  # Add starting balance as first data point
+                    }
                 }
 
                 # Add daily changes
