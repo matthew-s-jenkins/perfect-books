@@ -443,7 +443,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def get_ledger_entries(self, user_id, transaction_limit=20, transaction_offset=0, account_filter=None, start_date=None, end_date=None, show_reversals=True):
+    def get_ledger_entries(self, user_id, transaction_limit=20, transaction_offset=0, account_filter=None, start_date=None, end_date=None, show_reversals=True, search_query=None, category_id=None):
         """
         Get ledger entries for a user, optionally filtered to a specific account and/or date range.
 
@@ -456,6 +456,8 @@ class BusinessSimulator:
             start_date: Optional start date (YYYY-MM-DD format) for date range filtering
             end_date: Optional end date (YYYY-MM-DD format) for date range filtering
             show_reversals: Whether to include reversal transactions (default True)
+            search_query: Optional search string to filter by description or account
+            category_id: Optional category ID to filter by
 
         Returns:
             List of ledger entries with running balance if filtered to one account
@@ -476,6 +478,21 @@ class BusinessSimulator:
             # Build reversal filter condition
             reversal_filter = "" if show_reversals else " AND is_reversal = 0"
 
+            # Build search filter condition
+            search_filter = ""
+            search_params = []
+            if search_query and search_query.strip():
+                search_term = f"%{search_query.strip()}%"
+                search_filter = " AND (description LIKE ? OR account LIKE ? OR CAST(debit AS TEXT) LIKE ? OR CAST(credit AS TEXT) LIKE ?)"
+                search_params = [search_term, search_term, search_term, search_term]
+
+            # Build category filter condition
+            category_filter = ""
+            category_params = []
+            if category_id is not None:
+                category_filter = " AND category_id = ?"
+                category_params = [category_id]
+
             if account_filter:
                 # When filtering by account, get all entries for transactions involving that account
                 query = (
@@ -486,7 +503,7 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT DISTINCT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter +
+                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter + search_filter + category_filter +
                     "      AND transaction_uuid IN ( "
                     "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = ? AND account = ? " + date_filter + reversal_filter +
                     "      ) "
@@ -497,7 +514,7 @@ class BusinessSimulator:
                     "ON l.transaction_uuid = recent_t.transaction_uuid "
                     "WHERE l.user_id = ? ORDER BY l.transaction_date DESC, l.entry_id DESC"
                 )
-                params = [user_id] + date_params + [user_id, account_filter] + date_params + [transaction_limit, transaction_offset, user_id]
+                params = [user_id] + date_params + search_params + category_params + [user_id, account_filter] + date_params + [transaction_limit, transaction_offset, user_id]
                 cursor.execute(query, params)
             else:
                 # Original query - no account filter
@@ -509,7 +526,7 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter +
+                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter + search_filter + category_filter +
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
                     "    LIMIT ? OFFSET ? "
@@ -517,7 +534,7 @@ class BusinessSimulator:
                     "ON l.transaction_uuid = recent_t.transaction_uuid "
                     "WHERE l.user_id = ? ORDER BY l.transaction_date DESC, l.entry_id DESC"
                 )
-                params = [user_id] + date_params + [transaction_limit, transaction_offset, user_id]
+                params = [user_id] + date_params + search_params + category_params + [transaction_limit, transaction_offset, user_id]
                 cursor.execute(query, params)
 
             entries = self._rows_to_dicts(cursor.fetchall())
@@ -1054,31 +1071,70 @@ class BusinessSimulator:
         """Get expense breakdown by category for analysis."""
         conn, cursor = self._get_db_connection()
         try:
-            if not start_date:
-                # Default to last 30 days
-                current_date = self._get_user_current_date(cursor, user_id)
-                start_date = current_date - datetime.timedelta(days=30)
             if not end_date:
                 end_date = self._get_user_current_date(cursor, user_id)
+            if not start_date:
+                # Default to last 30 days - parse end_date string to do arithmetic
+                if isinstance(end_date, str):
+                    end_dt = datetime.datetime.strptime(end_date.split()[0], '%Y-%m-%d')
+                else:
+                    end_dt = end_date
+                start_date = (end_dt - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
 
             query = """
                 SELECT
                     c.category_id,
                     c.name,
                     c.color,
+                    p.name as parent_name,
                     SUM(l.debit) as total_amount,
                     COUNT(DISTINCT l.transaction_uuid) as transaction_count
                 FROM financial_ledger l
                 LEFT JOIN expense_categories c ON l.category_id = c.category_id
+                LEFT JOIN parent_categories p ON c.parent_id = p.parent_id
                 WHERE l.user_id = ?
                     AND l.account = 'Expenses'
                     AND l.transaction_date BETWEEN ? AND ?
                     AND l.category_id IS NOT NULL
                     AND l.is_reversal = 0
-                GROUP BY c.category_id, c.name, c.color
+                GROUP BY c.category_id, c.name, c.color, p.name
                 ORDER BY total_amount DESC
             """
             cursor.execute(query, (user_id, start_date, end_date))
+            return self._rows_to_dicts(cursor.fetchall())
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_transactions_by_category(self, user_id, category_id, start_date=None, end_date=None):
+        """Get transactions for a specific category within a date range."""
+        conn, cursor = self._get_db_connection()
+        try:
+            if not end_date:
+                end_date = self._get_user_current_date(cursor, user_id)
+            if not start_date:
+                # Default to last 30 days - parse end_date string to do arithmetic
+                if isinstance(end_date, str):
+                    end_dt = datetime.datetime.strptime(end_date.split()[0], '%Y-%m-%d')
+                else:
+                    end_dt = end_date
+                start_date = (end_dt - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+
+            query = """
+                SELECT
+                    l.transaction_date,
+                    l.description,
+                    l.debit as amount,
+                    l.transaction_uuid
+                FROM financial_ledger l
+                WHERE l.user_id = ?
+                    AND l.category_id = ?
+                    AND l.account = 'Expenses'
+                    AND l.transaction_date BETWEEN ? AND ?
+                    AND l.is_reversal = 0
+                ORDER BY l.transaction_date DESC
+            """
+            cursor.execute(query, (user_id, category_id, start_date, end_date))
             return self._rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
@@ -1798,9 +1854,13 @@ class BusinessSimulator:
             from_account = next((acc for acc in accounts if acc['account_id'] == from_account_id), None)
             to_account = next((acc for acc in accounts if acc['account_id'] == to_account_id), None)
 
-            # Convert balances to float for calculations
-            from_balance = float(from_account['balance'])
-            to_balance = float(to_account['balance'])
+            # Calculate actual balance from ledger (not the cached balance)
+            cursor.execute(
+                "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance "
+                "FROM financial_ledger WHERE user_id = ? AND account = ?",
+                (user_id, from_account['name'])
+            )
+            from_balance = float(self._row_to_dict(cursor.fetchone())['balance'] or 0)
 
             # Check if from_account has sufficient balance
             if from_account['type'] == 'CREDIT_CARD':
@@ -1809,10 +1869,6 @@ class BusinessSimulator:
                     return False, "Transfer declined. Would exceed credit limit."
             elif from_balance < amount:
                 return False, "Insufficient funds for transfer."
-
-            # Calculate new balances
-            new_from_balance = from_balance - amount
-            new_to_balance = to_balance + amount
 
             # Get transaction date
             if transaction_date:
@@ -1855,18 +1911,23 @@ class BusinessSimulator:
             if amount <= 0: return False, "Expense amount must be positive."
 
             cursor.execute("SELECT * FROM accounts WHERE account_id = ? AND user_id = ?", (account_id, user_id))
-            account = cursor.fetchone()
+            account = self._row_to_dict(cursor.fetchone())
             if not account: return False, "Invalid account specified."
 
-            balance = float(account['balance'])
+            # Calculate actual balance from ledger (not the cached balance)
+            cursor.execute(
+                "SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance "
+                "FROM financial_ledger WHERE user_id = ? AND account = ?",
+                (user_id, account['name'])
+            )
+            balance = float(self._row_to_dict(cursor.fetchone())['balance'] or 0)
+
             if account['type'] == 'CREDIT_CARD':
                 credit_limit = float(account['credit_limit']) if account['credit_limit'] is not None else None
                 if credit_limit is not None and (balance - amount) < -credit_limit:
                     return False, "Transaction declined. Exceeds credit limit."
             elif balance < amount:
                 return False, "Insufficient funds."
-
-            new_balance = balance - amount
 
             # If transaction_date is provided, use it; otherwise get current user date
             if transaction_date:
@@ -2875,6 +2936,40 @@ class BusinessSimulator:
             """, (user_id, start_date_str, current_date_str))
             spending_by_category = self._rows_to_dicts(cursor.fetchall())
 
+            # Get income breakdown by description (for Income by Source chart)
+            cursor.execute("""
+                SELECT description, SUM(credit) as amount
+                FROM financial_ledger
+                WHERE user_id = ?
+                    AND account = 'Income'
+                    AND transaction_date BETWEEN ? AND ?
+                    AND is_reversal = 0
+                    AND description != 'Time Advanced'
+                    AND description != 'Initial Balance'
+                GROUP BY description
+                ORDER BY amount DESC
+            """, (user_id, start_date_str, current_date_str))
+            income_by_description = self._rows_to_dicts(cursor.fetchall())
+
+            # Get income breakdown by category (for Income by Source chart)
+            cursor.execute("""
+                SELECT
+                    COALESCE(ic.name, 'Uncategorized') as name,
+                    COALESCE(ic.color, '#10b981') as color,
+                    SUM(l.credit) as amount
+                FROM financial_ledger l
+                LEFT JOIN income_categories ic ON l.category_id = ic.category_id
+                WHERE l.user_id = ?
+                    AND l.account = 'Income'
+                    AND l.transaction_date BETWEEN ? AND ?
+                    AND l.is_reversal = 0
+                    AND l.description != 'Time Advanced'
+                    AND l.description != 'Initial Balance'
+                GROUP BY ic.category_id, ic.name, ic.color
+                ORDER BY amount DESC
+            """, (user_id, start_date_str, current_date_str))
+            income_by_category = self._rows_to_dicts(cursor.fetchall())
+
             # Get net worth over time (daily snapshots) - exclude reversals
             cursor.execute("""
                 SELECT DATE(transaction_date) as date,
@@ -3305,6 +3400,8 @@ class BusinessSimulator:
                 'net_income': total_income - total_expenses,
                 'savings_rate': round(savings_rate, 1),
                 'spending_by_category': spending_by_category,
+                'income_by_description': income_by_description,
+                'income_by_category': income_by_category,
                 'net_worth_trend': net_worth_trend,
                 'income_vs_expenses': income_vs_expenses,
                 'weekly_income_expenses': weekly_income_expenses,

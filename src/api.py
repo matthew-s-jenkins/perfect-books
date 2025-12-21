@@ -545,11 +545,13 @@ def sync_balances():
 @login_required
 def get_ledger():
     account_filter = request.args.get('account')  # Optional query parameter
-    limit = request.args.get('limit', 20, type=int)  # Default 20
+    limit = request.args.get('limit', 50, type=int)  # Default 50 (increased from 20)
     offset = request.args.get('offset', 0, type=int)  # Default 0
     start_date = request.args.get('start_date')  # Optional start date (YYYY-MM-DD)
     end_date = request.args.get('end_date')  # Optional end date (YYYY-MM-DD)
-    show_reversals = request.args.get('show_reversals', 'true', type=str).lower() == 'true'  # Default true
+    show_reversals = request.args.get('show_reversals', 'false', type=str).lower() == 'true'  # Default false (hide reversals)
+    search_query = request.args.get('search')  # Optional search query
+    category_id = request.args.get('category_id', type=int)  # Optional category filter
     return jsonify(sim.get_ledger_entries(
         user_id=current_user.id,
         transaction_limit=limit,
@@ -557,7 +559,9 @@ def get_ledger():
         account_filter=account_filter,
         start_date=start_date,
         end_date=end_date,
-        show_reversals=show_reversals
+        show_reversals=show_reversals,
+        search_query=search_query,
+        category_id=category_id
     ))
 
 @app.route('/api/descriptions/income', methods=['GET'])
@@ -848,6 +852,29 @@ def get_expense_trends_api():
             end_date=end_date
         )
         return jsonify(trends)
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {e}"}), 500
+
+@app.route('/api/transactions', methods=['GET'])
+@check_sim
+@login_required
+def get_transactions_by_category_api():
+    """Get transactions filtered by category and date range."""
+    try:
+        category_id = request.args.get('category_id', type=int)
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        if not category_id:
+            return jsonify({"error": "category_id is required"}), 400
+
+        transactions = sim.get_transactions_by_category(
+            user_id=current_user.id,
+            category_id=category_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return jsonify(transactions)
     except Exception as e:
         return jsonify({"error": f"An error occurred: {e}"}), 500
 
