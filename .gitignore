@@ -49,6 +49,7 @@ nul
 
 # Notes and documentation (private)
 notes/
+documents/
 
 # Development scripts (private)
 scripts/

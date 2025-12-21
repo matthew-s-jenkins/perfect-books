@@ -5300,9 +5300,14 @@
 
                             // Auto-advance time to today's date if needed (runs on every page load/refresh)
                             try {
+                                // Get client's local date for timezone-aware auto-advance
+                                const now = new Date();
+                                const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
                                 await fetchWithCredentials(`${API_BASE_URL}/api/auto_advance`, {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ client_date: clientDate })
                                 });
                             } catch (err) {
                                 console.error("Auto-advance failed:", err);

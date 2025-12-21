@@ -177,17 +177,36 @@ This mirrors real business expense management workflows.
 
 ### 📈 Income & Expense Tracking
 
-- **Expense Categorization**: Custom categories with color coding (10 default categories included)
+- **Expense Categorization**: Custom categories with color coding organized by parent groups (Groceries, Dining, Transportation, etc.)
 - **Income Tracking**: Log all income sources with descriptions
 - **Transaction History**: Complete, immutable ledger with advanced filtering
-- **Pagination Support**: "Load More" button to view up to 100 transactions per session
+- **Server-Side Search**: Search the entire transaction database (not just loaded entries) with instant results
+- **Category Filter**: Filter transactions by category using dropdown selector
+- **Pagination Support**: "Load More" button to view up to 500 transactions per session (50 per batch)
 - **Date Range Filtering**: Filter transactions by start date, end date, or date range
 - **Account Filtering**: Filter ledger by specific account with running balance display
 - **Color-Coded Amounts**: Green for increases, red for decreases when viewing single account
 - **Transaction Reversal**: Reverse incorrect transactions with dedicated tracking fields (is_reversal, reversal_of_id)
-- **Reversal Filtering**: Toggle to show/hide reversals in ledger view (excluded from totals by default)
+- **Reversal Filtering**: Toggle to show/hide reversals in ledger view (hidden by default)
 - **Category Analytics**: See spending breakdown by category
 - **CSV Export**: Export filtered transaction data for external analysis
+
+### 📊 Analysis Dashboard
+
+- **Interactive Chart Panel**: Choose from 6 chart types with dropdown selector
+- **Dual Chart View**: Add a second chart for side-by-side comparison
+- **Chart Types**:
+  - Income vs Spending (line chart showing weekly trends)
+  - Cash Balance Over Time (asset account trends)
+  - Credit Balance Over Time (selectable credit accounts)
+  - Net Worth Trend (assets minus liabilities over time)
+  - Category Trend (spending trend for selected category)
+  - Income by Source (breakdown by description or category)
+- **Category Breakdown Panel**: Expandable list showing spending by category
+- **Period Comparison**: "vs previous period" shows spending changes
+- **Transaction Drill-Down**: Click categories to see individual transactions
+- **Parent Category Grouping**: Toggle between individual and grouped category views
+- **Persistent Preferences**: Chart selections saved to localStorage
 
 ### 🔄 Recurring Transactions
 
@@ -511,9 +530,17 @@ See full API documentation in the original README or via Swagger (coming soon).
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v3.2 - Category Overhaul Release)
+### ✅ Current Features (v3.3 - Analysis & Search Release)
+- ✅ **Analysis Dashboard Overhaul** - 6 interactive chart types with dual-chart view
+- ✅ **Server-Side Ledger Search** - Search entire database, not just loaded transactions
+- ✅ **Category Filter in Ledger** - Filter transactions by category with dropdown
+- ✅ **Income by Source Analysis** - Toggle between description and category breakdown
+- ✅ **Category Trend Charts** - See spending trends for individual categories
+- ✅ **Net Worth Trend** - Track assets vs liabilities over time
+- ✅ **Period Comparison** - "vs previous period" spending comparison
+- ✅ **Timezone-Aware Dates** - Uses client's local date for auto-advance
 - ✅ **Category System Overhaul** - Separate income and expense categories with parent groups
-- ✅ **Parent Category Groups** - Organize categories hierarchically (Home, Food, Transportation, etc.)
+- ✅ **Parent Category Groups** - Organize categories hierarchically (Groceries, Dining, Transportation, etc.)
 - ✅ **Full Group Management** - Add, edit, delete groups; assign categories via dropdown
 - ✅ **Income Categories** - Dedicated income category management with parent support
 - ✅ **Delete Warnings** - Shows transaction count before moving to Uncategorized
@@ -530,8 +557,8 @@ See full API documentation in the original README or via Swagger (coming soon).
 - ✅ Double-entry accounting system
 - ✅ Multi-account management
 - ✅ Income and expense tracking with categories
-- ✅ Enhanced transaction history with filtering
-- ✅ Reversal tracking with toggle
+- ✅ Enhanced transaction history with filtering (up to 500 transactions)
+- ✅ Reversal tracking with toggle (hidden by default)
 - ✅ Recurring expenses and income (including variable amounts)
 - ✅ Loan tracking with payment breakdown
 - ✅ Credit card interest automation
@@ -539,7 +566,7 @@ See full API documentation in the original README or via Swagger (coming soon).
 - ✅ Expense analysis with drill-down
 - ✅ CSV export
 
-### 🔮 Planned Features (v3.3)
+### 🔮 Planned Features (v3.4)
 - [ ] **Power BI Dashboard Integration** - ODBC connection to SQLite
 - [ ] **Demo Mode** - Fake data for portfolio showcase
 - [ ] **Bi-weekly/Custom Recurring** - Support for 14-day and custom interval recurring transactions

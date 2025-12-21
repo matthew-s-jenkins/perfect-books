@@ -198,6 +198,7 @@ def login_user_api():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
+    client_date = data.get('client_date')  # Client's local date for timezone handling
     if not all([username, password]):
         return jsonify({"success": False, "message": "Username and password are required."}), 400
 
@@ -206,9 +207,9 @@ def login_user_api():
         user = User(id=str(user_data['user_id']), username=user_data['username'])
         login_user(user)
 
-        # Auto-advance time to today's date if needed
+        # Auto-advance time to today's date if needed (using client's date for timezone accuracy)
         try:
-            result = sim.auto_advance_time(int(user.id))
+            result = sim.auto_advance_time(int(user.id), client_date=client_date)
         except Exception as e:
             print(f"[LOGIN] Auto-advance failed for user {user.id}: {e}")
             import traceback
@@ -518,7 +519,9 @@ def get_status():
 def auto_advance():
     """Auto-advance time to today's date if needed. Called on page load."""
     try:
-        result = sim.auto_advance_time(int(current_user.id))
+        data = request.get_json() or {}
+        client_date = data.get('client_date')  # Client's local date for timezone handling
+        result = sim.auto_advance_time(int(current_user.id), client_date=client_date)
         return jsonify({"success": True, "result": result})
     except Exception as e:
         print(f"[AUTO-ADVANCE ERROR] {e}")

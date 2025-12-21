@@ -2658,13 +2658,16 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def auto_advance_time(self, user_id):
+    def auto_advance_time(self, user_id, client_date=None):
         """
         Automatically advance time to today's date if the user's last transaction
         is in the past. This is called on login to keep the simulation current.
 
         Args:
             user_id (int): The ID of the user
+            client_date (str, optional): Client's current date in YYYY-MM-DD format.
+                                         Used to handle timezone differences between
+                                         client and server.
 
         Returns:
             dict: Result with log messages from the advance
@@ -2684,8 +2687,15 @@ class BusinessSimulator:
             else:
                 current_date = current_date_raw
 
-            # Get today's actual date
-            today = datetime.datetime.now().date()
+            # Use client's date if provided (handles timezone differences), otherwise use server date
+            if client_date:
+                if isinstance(client_date, str):
+                    # Handle both YYYY-MM-DD and ISO format with time
+                    today = datetime.datetime.strptime(client_date.split('T')[0], '%Y-%m-%d').date()
+                else:
+                    today = client_date
+            else:
+                today = datetime.datetime.now().date()
 
             # Calculate days difference
             if current_date < today:

@@ -27,11 +27,15 @@
                 setError(null);
 
                 try {
+                    // Get client's local date for timezone-aware auto-advance
+                    const now = new Date();
+                    const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
                     const response = await fetch(`${API_BASE_URL}/api/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'include',
-                        body: JSON.stringify({ username, password }),
+                        body: JSON.stringify({ username, password, client_date: clientDate }),
                     });
 
                     const result = await response.json();
