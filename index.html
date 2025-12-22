@@ -10,16 +10,149 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="themes.js"></script>
+    <style>
+        :root {
+            /* Theme colors will be set dynamically */
+            --color-bg: #111827;
+            --color-bg-secondary: #1f2937;
+            --color-bg-tertiary: #374151;
+            --color-bg-hover: #4b5563;
+            --color-text: #f9fafb;
+            --color-text-secondary: #d1d5db;
+            --color-text-muted: #9ca3af;
+            --color-border: #4b5563;
+            --color-border-light: #374151;
+            --color-primary: #06b6d4;
+            --color-primary-hover: #0891b2;
+            --color-primary-light: #22d3ee;
+            --color-success: #10b981;
+            --color-success-light: #34d399;
+            --color-danger: #ef4444;
+            --color-danger-light: #f87171;
+            --color-warning: #f59e0b;
+            --color-warning-light: #fbbf24;
+        }
+
+        /* Override common Tailwind classes with theme variables */
+        .bg-gray-800 {
+            background-color: var(--color-bg-secondary) !important;
+        }
+        .bg-gray-700 {
+            background-color: var(--color-bg-tertiary) !important;
+        }
+        .bg-gray-900 {
+            background-color: var(--color-bg) !important;
+        }
+        .bg-gray-600 {
+            background-color: var(--color-bg-hover) !important;
+        }
+        .text-gray-300 {
+            color: var(--color-text-secondary) !important;
+        }
+        .text-gray-400 {
+            color: var(--color-text-muted) !important;
+        }
+        .text-gray-200 {
+            color: var(--color-text-secondary) !important;
+        }
+        .text-gray-500 {
+            color: var(--color-text-muted) !important;
+        }
+        .border-gray-600 {
+            border-color: var(--color-border) !important;
+        }
+        .border-gray-700 {
+            border-color: var(--color-border-light) !important;
+        }
+        .text-white {
+            color: var(--color-text) !important;
+        }
+        .text-green-400 {
+            color: var(--color-success) !important;
+        }
+        .text-red-400 {
+            color: var(--color-danger) !important;
+        }
+        .text-cyan-400 {
+            color: var(--color-primary) !important;
+        }
+        .bg-cyan-600 {
+            background-color: var(--color-primary) !important;
+        }
+        .bg-cyan-500 {
+            background-color: var(--color-primary-hover) !important;
+        }
+        .bg-green-600 {
+            background-color: var(--color-success) !important;
+        }
+        .bg-green-500 {
+            background-color: var(--color-success-light) !important;
+        }
+        .bg-red-600 {
+            background-color: var(--color-danger) !important;
+        }
+        .bg-red-500 {
+            background-color: var(--color-danger-light) !important;
+        }
+        .bg-yellow-600 {
+            background-color: var(--color-warning) !important;
+        }
+        .bg-yellow-500 {
+            background-color: var(--color-warning-light) !important;
+        }
+        .hover\:bg-gray-600:hover {
+            background-color: var(--color-bg-hover) !important;
+        }
+        .hover\:bg-cyan-500:hover {
+            background-color: var(--color-primary-hover) !important;
+        }
+        .hover\:bg-green-500:hover {
+            background-color: var(--color-success-light) !important;
+        }
+        .hover\:bg-red-500:hover {
+            background-color: var(--color-danger-light) !important;
+        }
+        .hover\:bg-yellow-500:hover {
+            background-color: var(--color-warning-light) !important;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans">
+<body style="background-color: var(--color-bg); color: var(--color-text);" class="font-sans">
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect } = React;
         const API_BASE_URL = '';
-        
+
         const fetchWithCredentials = (url, options = {}) => {
             return fetch(url, { ...options, credentials: 'include' });
         };
+
+        // --- THEME MANAGEMENT ---
+        const applyTheme = (themeName) => {
+            const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
+            const root = document.documentElement;
+
+            // Apply each color as a CSS variable
+            Object.entries(theme.colors).forEach(([key, value]) => {
+                // Convert camelCase to kebab-case (bgSecondary -> bg-secondary)
+                const cssVarName = `--color-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+                root.style.setProperty(cssVarName, value);
+            });
+
+            // Save preference to localStorage
+            localStorage.setItem('theme', themeName);
+        };
+
+        // Load saved theme on page load
+        const loadSavedTheme = () => {
+            const savedTheme = localStorage.getItem('theme') || DEFAULT_THEME;
+            applyTheme(savedTheme);
+            return savedTheme;
+        };
+
+        // Initialize theme immediately (before React loads)
+        loadSavedTheme();
         
         // --- UTILITY FUNCTIONS ---
         const categorizeAccount = (accountName, accountTypeMap) => {
@@ -229,6 +362,9 @@
 
         function Header({ status, username, showToast }) {
             const [showPasswordModal, setShowPasswordModal] = React.useState(false);
+            const [currentTheme, setCurrentTheme] = React.useState(() => {
+                return localStorage.getItem('theme') || DEFAULT_THEME;
+            });
 
             const formattedDate = status ?
                 new Date(status.date + 'T12:00:00').toLocaleDateString('en-US', {
@@ -242,6 +378,12 @@
                 window.location.href = 'login.html';
             };
 
+            const handleThemeChange = (e) => {
+                const newTheme = e.target.value;
+                setCurrentTheme(newTheme);
+                applyTheme(newTheme);
+            };
+
             return (
                 <>
                     {showPasswordModal && (
@@ -250,27 +392,50 @@
                             showToast={showToast}
                         />
                     )}
-                    <header className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                    <header style={{ backgroundColor: 'var(--color-bg-secondary)' }} className="shadow rounded-lg p-4 mb-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <div>
-                                <h1 className="text-2xl sm:text-3xl font-bold text-white">Perfect Books</h1>
-                                <p className="text-sm sm:text-base text-gray-400">Personal Finance Manager</p>
+                                <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: 'var(--color-text)' }}>Perfect Books</h1>
+                                <p className="text-sm sm:text-base" style={{ color: 'var(--color-text-secondary)' }}>Personal Finance Manager</p>
                             </div>
                             <div className="sm:text-right w-full sm:w-auto">
-                                <p className="text-base sm:text-lg font-medium text-white">{formattedDate}</p>
-                                <p className="text-xs text-gray-500 mb-2">Current Date</p>
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-2">
+                                    <div>
+                                        <p className="text-base sm:text-lg font-medium" style={{ color: 'var(--color-text)' }}>{formattedDate}</p>
+                                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Current Date</p>
+                                    </div>
+                                    <select
+                                        value={currentTheme}
+                                        onChange={handleThemeChange}
+                                        style={{
+                                            backgroundColor: 'var(--color-bg-tertiary)',
+                                            color: 'var(--color-text)',
+                                            borderColor: 'var(--color-border)'
+                                        }}
+                                        className="px-3 py-1 rounded text-sm focus:outline-none focus:ring-2"
+                                        title="Change theme"
+                                    >
+                                        {Object.keys(THEMES).map(themeKey => (
+                                            <option key={themeKey} value={themeKey}>
+                                                {THEMES[themeKey].name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                                 {username && (
-                                    <div className="text-xs text-gray-400 flex flex-wrap items-center gap-2">
-                                        <span className="font-medium text-cyan-400">{username}</span>
+                                    <div className="text-xs flex flex-wrap items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+                                        <span className="font-medium" style={{ color: 'var(--color-primary)' }}>{username}</span>
                                         <button
                                             onClick={() => setShowPasswordModal(true)}
-                                            className="font-medium text-blue-500 hover:text-blue-400 hover:underline focus:outline-none"
+                                            className="font-medium hover:underline focus:outline-none"
+                                            style={{ color: 'var(--color-primary)' }}
                                         >
                                             (change password)
                                         </button>
                                         <button
                                             onClick={handleLogout}
-                                            className="font-medium text-red-500 hover:text-red-400 hover:underline focus:outline-none"
+                                            className="font-medium hover:underline focus:outline-none"
+                                            style={{ color: 'var(--color-danger)' }}
                                         >
                                             (logout)
                                         </button>
@@ -290,20 +455,20 @@
             const avgExpenses = hasData ? averageData.average_expenses : 0;
 
             const isPositive = avgNet >= 0;
-            const netColorClass = isPositive ? 'text-green-400' : 'text-red-400';
             const netSign = isPositive ? '+' : '';
             const formattedNet = avgNet.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
             const formattedIncome = avgIncome.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
             const formattedExpenses = avgExpenses.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
             return (
-                <div className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                <div className="shadow rounded-lg p-4 mb-6" style={{backgroundColor: 'var(--color-bg-secondary)'}}>
                     <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-lg font-medium text-gray-300">Daily Average</h2>
+                        <h2 className="text-lg font-medium" style={{color: 'var(--color-text-secondary)'}}>Daily Average</h2>
                         <select
                             value={dateRange}
                             onChange={(e) => setDateRange(e.target.value)}
-                            className="bg-gray-700 text-white px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="px-3 py-1 rounded text-sm focus:outline-none focus:ring-2"
+                            style={{backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)', borderColor: 'var(--color-border)'}}
                         >
                             <option value="7">7 days</option>
                             <option value="30">30 days</option>
@@ -313,13 +478,13 @@
                     </div>
                     {hasData ? (
                         <div>
-                            <p className={`text-3xl font-bold ${netColorClass}`}>{netSign}{formattedNet}/day</p>
-                            <p className="text-sm text-gray-400 mt-1">
+                            <p className="text-3xl font-bold" style={{color: isPositive ? 'var(--color-success)' : 'var(--color-danger)'}}>{netSign}{formattedNet}/day</p>
+                            <p className="text-sm mt-1" style={{color: 'var(--color-text-muted)'}}>
                                 Income: {formattedIncome} | Expenses: {formattedExpenses}
                             </p>
                         </div>
                     ) : (
-                        <p className="text-gray-400 text-sm">No transaction data yet.</p>
+                        <p className="text-sm" style={{color: 'var(--color-text-muted)'}}>No transaction data yet.</p>
                     )}
                 </div>
             );
@@ -351,27 +516,27 @@
             const isBalanced = Math.abs(totals.assets - rightSide) < 0.01;
 
             return (
-                <div className="bg-gray-800 shadow rounded-lg p-4 mb-6">
+                <div className="shadow rounded-lg p-4 mb-6" style={{backgroundColor: 'var(--color-bg-secondary)'}}>
                     <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-sm font-medium text-gray-300">Balance Sheet Check (Assets = Liabilities + Equity)</h2>
-                        <p className={`text-sm sm:text-base font-bold px-3 py-1 rounded ${isBalanced ? 'bg-green-900 text-green-400' : 'bg-red-900 text-red-400'}`}>
+                        <h2 className="text-sm font-medium" style={{color: 'var(--color-text-secondary)'}}>Balance Sheet Check (Assets = Liabilities + Equity)</h2>
+                        <p className="text-sm sm:text-base font-bold px-3 py-1 rounded" style={{backgroundColor: isBalanced ? 'var(--color-success)' : 'var(--color-danger)', color: 'var(--color-text)', opacity: 0.9}}>
                             {isBalanced ? 'Balanced' : 'Error'}
                         </p>
                     </div>
                     <div className="flex items-center justify-around text-center font-mono">
                         <div className="flex-1">
-                            <p className="text-xs text-gray-500">Total Assets</p>
-                            <p className="text-sm sm:text-lg text-green-400">{totals.assets.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                            <p className="text-xs" style={{color: 'var(--color-text-muted)'}}>Total Assets</p>
+                            <p className="text-sm sm:text-lg" style={{color: 'var(--color-success)'}}>{totals.assets.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
                         </div>
-                        <div className="text-xl sm:text-2xl text-gray-600 px-1 sm:px-2">=</div>
+                        <div className="text-xl sm:text-2xl px-1 sm:px-2" style={{color: 'var(--color-text-muted)'}}>=</div>
                          <div className="flex-1">
-                            <p className="text-xs text-gray-500">Total Liabilities</p>
-                            <p className="text-sm sm:text-lg text-red-400">{totals.liabilities.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                            <p className="text-xs" style={{color: 'var(--color-text-muted)'}}>Total Liabilities</p>
+                            <p className="text-sm sm:text-lg" style={{color: 'var(--color-danger)'}}>{totals.liabilities.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
                         </div>
-                        <div className="text-xl sm:text-2xl text-gray-600 px-1 sm:px-2">+</div>
+                        <div className="text-xl sm:text-2xl px-1 sm:px-2" style={{color: 'var(--color-text-muted)'}}>+</div>
                         <div className="flex-1">
-                            <p className="text-xs text-gray-500">Total Equity</p>
-                            <p className="text-sm sm:text-lg text-cyan-400">{totals.equity.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
+                            <p className="text-xs" style={{color: 'var(--color-text-muted)'}}>Total Equity</p>
+                            <p className="text-sm sm:text-lg" style={{color: 'var(--color-primary)'}}>{totals.equity.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}</p>
                         </div>
                     </div>
                 </div>
@@ -5351,7 +5516,9 @@
             if (error) { return <div className="text-red-400 p-8">Error: {error}</div>; }
 
             const navButtonClasses = (page) =>
-                `px-4 py-2 text-sm font-medium rounded-md ${activePage === page ? 'bg-cyan-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
+                activePage === page
+                    ? 'px-4 py-2 text-sm font-medium rounded-md'
+                    : 'px-4 py-2 text-sm font-medium rounded-md';
 
             return (
                 <div className="container mx-auto p-2 sm:p-4 max-w-7xl">
@@ -5363,29 +5530,58 @@
                                 <BalanceSheetSummary accounts={accounts} />
                                 <div className="flex flex-wrap gap-2 mb-6 justify-between items-center">
                                     <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                                        <button onClick={() => setActivePage('dashboard')} className={navButtonClasses('dashboard')}>Dashboard</button>
-                                        <button onClick={() => setActivePage('accounts')} className={navButtonClasses('accounts')}>Accounts</button>
-                                        <button onClick={() => setActivePage('ledger')} className={navButtonClasses('ledger')}>Ledger</button>
-                                        <button onClick={() => setActivePage('recurring')} className={navButtonClasses('recurring')}>Recurring</button>
-                                        <button onClick={() => setActivePage('categories')} className={navButtonClasses('categories')}>Categories</button>
-                                        <button onClick={() => setActivePage('analysis')} className={navButtonClasses('analysis')}>Analysis</button>
-                                        <button onClick={() => setActivePage('reports')} className={navButtonClasses('reports')}>Reports</button>
+                                        <button
+                                            onClick={() => setActivePage('dashboard')}
+                                            className={navButtonClasses('dashboard')}
+                                            style={activePage === 'dashboard' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Dashboard</button>
+                                        <button
+                                            onClick={() => setActivePage('accounts')}
+                                            className={navButtonClasses('accounts')}
+                                            style={activePage === 'accounts' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Accounts</button>
+                                        <button
+                                            onClick={() => setActivePage('ledger')}
+                                            className={navButtonClasses('ledger')}
+                                            style={activePage === 'ledger' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Ledger</button>
+                                        <button
+                                            onClick={() => setActivePage('recurring')}
+                                            className={navButtonClasses('recurring')}
+                                            style={activePage === 'recurring' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Recurring</button>
+                                        <button
+                                            onClick={() => setActivePage('categories')}
+                                            className={navButtonClasses('categories')}
+                                            style={activePage === 'categories' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Categories</button>
+                                        <button
+                                            onClick={() => setActivePage('analysis')}
+                                            className={navButtonClasses('analysis')}
+                                            style={activePage === 'analysis' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Analysis</button>
+                                        <button
+                                            onClick={() => setActivePage('reports')}
+                                            className={navButtonClasses('reports')}
+                                            style={activePage === 'reports' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Reports</button>
                                     </div>
                                     <div className="flex flex-wrap sm:flex-nowrap gap-2">
                                         <button
                                             onClick={() => setShowPendingModal(true)}
-                                            className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded-md relative"
+                                            className="font-bold py-2 px-4 rounded-md relative"
+                                            style={{backgroundColor: 'var(--color-warning)', color: 'var(--color-text)'}}
                                         >
                                             🔔 Pending Bills
                                             {pendingCount > 0 && (
-                                                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                                                <span className="absolute -top-2 -right-2 text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center" style={{backgroundColor: 'var(--color-danger)', color: 'var(--color-text)'}}>
                                                     {pendingCount}
                                                 </span>
                                             )}
                                         </button>
-                                        <button onClick={() => setIsTransferFormVisible(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-md">⇄ Transfer</button>
-                                        <button onClick={() => setIsIncomeFormVisible(true)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-md">+ Add Income</button>
-                                        <button onClick={() => setIsExpenseFormVisible(true)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-md">- Add Expense</button>
+                                        <button onClick={() => setIsTransferFormVisible(true)} className="font-bold py-2 px-4 rounded-md" style={{backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'}}>⇄ Transfer</button>
+                                        <button onClick={() => setIsIncomeFormVisible(true)} className="font-bold py-2 px-4 rounded-md" style={{backgroundColor: 'var(--color-success)', color: 'var(--color-text)'}}>+ Add Income</button>
+                                        <button onClick={() => setIsExpenseFormVisible(true)} className="font-bold py-2 px-4 rounded-md" style={{backgroundColor: 'var(--color-danger)', color: 'var(--color-text)'}}>- Add Expense</button>
                                     </div>
                                 </div>
                                 {activePage === 'dashboard' && <DashboardPage showToast={showToast} status={status} setActivePage={setActivePage} dateRange={dateRange} setDateRange={setDateRange} />}

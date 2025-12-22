@@ -168,6 +168,15 @@ This mirrors real business expense management workflows.
 
 ## ✨ Core Features
 
+### 🎨 Customization & Themes
+
+- **6 Beautiful Themes**: Choose from Classic, Midnight, Emerald, Amber, Rose, and Slate themes
+- **Theme Selector**: Dropdown menu in header to instantly switch between themes
+- **Persistent Preferences**: Selected theme saved to browser and applies across all pages
+- **Easy Customization**: Theme colors defined in separate `themes.js` file for easy editing by non-technical users
+- **Full Coverage**: Themes apply to all pages (login, register, setup, and main app)
+- **CSS Variables**: Uses modern CSS custom properties for instant theme switching without page reload
+
 ### 💰 Financial Management
 
 - **Multi-Account Support**: Track checking, savings, credit cards, cash, loans, and investments
@@ -530,7 +539,10 @@ See full API documentation in the original README or via Swagger (coming soon).
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v3.3 - Analysis & Search Release)
+### ✅ Current Features (v3.3 - Analysis & Themes Release)
+- ✅ **Customizable Themes** - 6 beautiful themes (Classic, Midnight, Emerald, Amber, Rose, Slate)
+- ✅ **Theme Persistence** - Selected theme saved to localStorage and applies across all pages
+- ✅ **Easy Theme Customization** - All colors in separate `themes.js` file for non-technical editing
 - ✅ **Analysis Dashboard Overhaul** - 6 interactive chart types with dual-chart view
 - ✅ **Server-Side Ledger Search** - Search entire database, not just loaded transactions
 - ✅ **Category Filter in Ledger** - Filter transactions by category with dropdown

@@ -8,13 +8,56 @@
     <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="themes.js"></script>
+    <style>
+        :root {
+            --color-bg: #111827;
+            --color-bg-secondary: #1f2937;
+            --color-bg-tertiary: #374151;
+            --color-bg-hover: #4b5563;
+            --color-text: #f9fafb;
+            --color-text-secondary: #d1d5db;
+            --color-text-muted: #9ca3af;
+            --color-border: #4b5563;
+            --color-border-light: #374151;
+            --color-primary: #06b6d4;
+            --color-primary-hover: #0891b2;
+            --color-primary-light: #22d3ee;
+            --color-success: #10b981;
+            --color-success-light: #34d399;
+            --color-danger: #ef4444;
+            --color-danger-light: #f87171;
+            --color-warning: #f59e0b;
+            --color-warning-light: #fbbf24;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans">
+<body style="background-color: var(--color-bg); color: var(--color-text);">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
         const API_BASE_URL = '';
+
+        // Theme management functions
+        const applyTheme = (themeName) => {
+            const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
+            const root = document.documentElement;
+            Object.entries(theme.colors).forEach(([key, value]) => {
+                const cssVarName = `--color-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+                root.style.setProperty(cssVarName, value);
+            });
+            localStorage.setItem('theme', themeName);
+        };
+
+        const loadSavedTheme = () => {
+            const savedTheme = localStorage.getItem('theme') || DEFAULT_THEME;
+            applyTheme(savedTheme);
+            return savedTheme;
+        };
+
+        // Initialize theme immediately
+        loadSavedTheme();
 
         const fetchWithCredentials = (url, options = {}) => {
             return fetch(url, { ...options, credentials: 'include' });
