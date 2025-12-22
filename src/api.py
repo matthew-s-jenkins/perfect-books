@@ -220,9 +220,104 @@ def login_user_api():
     else:
         return jsonify({"success": False, "message": message}), 401
 
+@app.route('/api/demo_login', methods=['POST'])
+@check_sim
+def demo_login():
+    """
+    Create or retrieve a demo user for the current session.
+    Each session gets its own isolated demo user with pre-populated data.
+    Demo data persists during the session but is cleared on logout/new session.
+    """
+    try:
+        from demo_data import generate_demo_data
+    except ModuleNotFoundError:
+        from src.demo_data import generate_demo_data
+
+    # Check if this session already has a demo user
+    demo_user_id = session.get('demo_user_id')
+
+    if demo_user_id:
+        # Verify demo user still exists
+        conn, cursor = sim._get_db_connection()
+        cursor.execute("SELECT user_id, username FROM users WHERE user_id = ?", (demo_user_id,))
+        user_data = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if user_data:
+            # Existing demo user - log them back in
+            user = User(id=str(user_data['user_id']), username=user_data['username'])
+            login_user(user)
+            return jsonify({"success": True, "message": "Welcome back to demo mode!", "setup_needed": False})
+
+    # Create new demo user with unique session ID
+    import uuid
+    demo_username = f"demo_{uuid.uuid4().hex[:8]}"
+    demo_password = uuid.uuid4().hex  # Random password (user won't need it)
+
+    success, message, new_user_id = sim.register_user(demo_username, demo_password)
+
+    if not success:
+        return jsonify({"success": False, "message": "Failed to create demo user."}), 500
+
+    # Store demo user ID in session
+    session['demo_user_id'] = new_user_id
+    session['is_demo'] = True
+
+    # Create accounts for demo user
+    sim.create_account(new_user_id, "Checking Account", "CHECKING", 0)
+    sim.create_account(new_user_id, "Savings Account", "SAVINGS", 0)
+    sim.create_account(new_user_id, "Visa Credit Card", "CREDIT_CARD", 0, credit_limit=5000)
+
+    # Generate demo data
+    data = request.get_json() or {}
+    client_date = data.get('client_date')
+
+    # Auto-advance to current date
+    sim.auto_advance_time(new_user_id, client_date=client_date)
+
+    # Generate realistic transaction history
+    demo_info = generate_demo_data(sim, new_user_id)
+
+    # Log in the demo user
+    user = User(id=str(new_user_id), username=demo_username)
+    login_user(user)
+
+    return jsonify({
+        "success": True,
+        "message": "Welcome to Perfect Books Demo!",
+        "setup_needed": False,
+        "demo_info": demo_info
+    })
+
 @app.route('/api/logout', methods=['POST'])
 @login_required
 def logout():
+    # If this was a demo user, delete their data
+    if session.get('is_demo'):
+        demo_user_id = session.get('demo_user_id')
+        if demo_user_id:
+            # Delete demo user and all their data
+            try:
+                conn, cursor = sim._get_db_connection()
+                # Delete in order to respect foreign key constraints
+                cursor.execute("DELETE FROM financial_ledger WHERE user_id = ?", (demo_user_id,))
+                cursor.execute("DELETE FROM recurring_expenses WHERE user_id = ?", (demo_user_id,))
+                cursor.execute("DELETE FROM recurring_income WHERE user_id = ?", (demo_user_id,))
+                cursor.execute("DELETE FROM expense_categories WHERE user_id = ?", (demo_user_id,))
+                cursor.execute("DELETE FROM income_categories WHERE user_id = ?", (demo_user_id,))
+                cursor.execute("DELETE FROM accounts WHERE user_id = ?", (demo_user_id,))
+                cursor.execute("DELETE FROM users WHERE user_id = ?", (demo_user_id,))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error deleting demo user data: {e}")
+
+        # Clear demo session flags
+        session.pop('demo_user_id', None)
+        session.pop('is_demo', None)
+
     logout_user()
     return jsonify({"success": True, "message": "You have been logged out."})
 
@@ -248,7 +343,11 @@ def change_password():
 @app.route('/api/check_session', methods=['GET'])
 @login_required
 def check_session():
-    return jsonify({"logged_in": True, "username": current_user.username})
+    return jsonify({
+        "logged_in": True,
+        "username": current_user.username,
+        "is_demo": session.get('is_demo', False)
+    })
 
 # --- ACCOUNT MANAGEMENT API ROUTES ---
 

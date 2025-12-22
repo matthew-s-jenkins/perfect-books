@@ -109,6 +109,33 @@
                 }
             };
 
+            const handleDemoLogin = async () => {
+                setError(null);
+
+                try {
+                    // Get client's local date for timezone-aware auto-advance
+                    const now = new Date();
+                    const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+                    const response = await fetch(`${API_BASE_URL}/api/demo_login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ client_date: clientDate }),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        window.location.href = 'index.html';
+                    } else {
+                        setError(result.message || "Failed to start demo mode.");
+                    }
+                } catch (err) {
+                    setError("An error occurred. Is the API server running?");
+                }
+            };
+
             return (
                 <div className="min-h-screen flex items-center justify-center">
                     <div className="p-8 rounded-lg shadow-xl w-full max-w-sm" style={{backgroundColor: 'var(--color-bg-secondary)'}}>
@@ -173,8 +200,21 @@
 
                             {error && <p className="mb-4 text-center" style={{color: 'var(--color-danger)'}}>{error}</p>}
 
-                            <button type="submit" className="w-full font-bold py-2 px-4 rounded" style={{backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'}}>
+                            <button type="submit" className="w-full font-bold py-2 px-4 rounded mb-3" style={{backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'}}>
                                 Log In
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleDemoLogin}
+                                className="w-full font-bold py-2 px-4 rounded border-2"
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    borderColor: 'var(--color-primary)',
+                                    color: 'var(--color-primary)'
+                                }}
+                            >
+                                Try Demo
                             </button>
                         </form>
 

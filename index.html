@@ -360,7 +360,7 @@
             );
         }
 
-        function Header({ status, username, showToast }) {
+        function Header({ status, username, isDemo, showToast }) {
             const [showPasswordModal, setShowPasswordModal] = React.useState(false);
             const [currentTheme, setCurrentTheme] = React.useState(() => {
                 return localStorage.getItem('theme') || DEFAULT_THEME;
@@ -391,6 +391,13 @@
                             onClose={() => setShowPasswordModal(false)}
                             showToast={showToast}
                         />
+                    )}
+                    {isDemo && (
+                        <div className="shadow rounded-lg p-3 mb-4 text-center" style={{backgroundColor: 'var(--color-warning)', color: 'var(--color-text)'}}>
+                            <p className="text-sm font-medium">
+                                📊 Demo Mode - You're viewing sample data. Changes persist during your session but will be reset when you logout.
+                            </p>
+                        </div>
                     )}
                     <header style={{ backgroundColor: 'var(--color-bg-secondary)' }} className="shadow rounded-lg p-4 mb-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -5367,6 +5374,7 @@
         function App() {
             const [isLoading, setIsLoading] = useState(true);
             const [username, setUsername] = useState('');
+            const [isDemo, setIsDemo] = useState(false);
             const [accounts, setAccounts] = useState([]);
             const [ledger, setLedger] = useState([]);
             const [error, setError] = useState(null);
@@ -5462,6 +5470,7 @@
                         if (response.ok) {
                             const data = await response.json();
                             setUsername(data.username);
+                            setIsDemo(data.is_demo || false);
 
                             // Auto-advance time to today's date if needed (runs on every page load/refresh)
                             try {
@@ -5522,7 +5531,7 @@
 
             return (
                 <div className="container mx-auto p-2 sm:p-4 max-w-7xl">
-                    {status && <Header status={status} username={username} showToast={showToast} />}
+                    {status && <Header status={status} username={username} isDemo={isDemo} showToast={showToast} />}
                     <main>
                         {isLoading ? ( <LoadingSpinner text="Loading your financial data..." /> ) : (
                             <div>
