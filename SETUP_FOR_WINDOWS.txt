@@ -1,0 +1,89 @@
+=============================================================
+PERFECT BOOKS - QUICK START GUIDE FOR WINDOWS
+=============================================================
+
+Hi! Here's how to get Perfect Books running on your Windows PC:
+
+STEP 1: INSTALL PYTHON (if you don't have it)
+----------------------------------------------
+1. Go to https://www.python.org/downloads/
+2. Download Python 3.8 or newer for Windows
+3. Run the installer
+4. IMPORTANT: Check the box "Add Python to PATH" at the bottom!
+5. Click "Install Now" and follow the prompts
+
+
+STEP 2: INSTALL DEPENDENCIES
+-----------------------------
+1. Open Command Prompt (search for "cmd" in the Start menu)
+2. Navigate to this folder:
+   cd C:\path\to\Perfect_Books
+   (Tip: Type "cd " and drag the Perfect_Books folder into Command Prompt)
+3. Install required packages:
+   pip install -r requirements.txt
+
+
+STEP 3: RUN PERFECT BOOKS
+--------------------------
+Option A - Double-click (Easiest):
+  1. Find "START_WINDOWS.bat" in the Perfect_Books folder
+  2. Double-click it
+  3. If Windows SmartScreen appears, click "More info" then "Run anyway"
+  4. Your browser will open automatically!
+
+Option B - Command Prompt:
+  1. Open Command Prompt
+  2. Navigate to Perfect_Books folder
+  3. Run: python start.py
+
+
+FIRST TIME SETUP
+-----------------
+When the browser opens:
+1. Click "Register" on the login page
+2. Create a username and password
+3. Start tracking your finances!
+
+
+TROUBLESHOOTING
+---------------
+If you get "'python' is not recognized" error:
+  - Python wasn't added to PATH during installation
+  - Reinstall Python and check "Add Python to PATH"
+  - Or manually add Python to your PATH environment variable
+
+If you get "pip is not recognized" error:
+  - Try: python -m pip install -r requirements.txt
+
+If double-clicking START_WINDOWS.bat opens Notepad:
+  - Right-click the file
+  - Choose "Open with" > "Windows Command Processor"
+
+If the browser doesn't open automatically:
+  - Manually go to: http://127.0.0.1:5001
+
+If Windows Defender or antivirus blocks it:
+  - This is a false positive (the app runs a local web server)
+  - Add Perfect_Books folder to your antivirus exceptions
+
+
+HOW TO UPDATE PERFECT BOOKS
+---------------------------
+When there's a new version:
+1. Delete the old Perfect_Books folder
+2. Download the new version
+3. Double-click START_WINDOWS.bat
+4. Your data will be restored automatically!
+
+Your financial data is safely backed up to:
+  Documents\PerfectBooks_Data\
+
+You don't need to do anything - backups happen automatically
+every time you start the app.
+
+
+NEED HELP?
+----------
+Text me! I'll help you get it running.
+
+=============================================================
