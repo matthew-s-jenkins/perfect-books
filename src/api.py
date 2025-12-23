@@ -233,22 +233,30 @@ def demo_login():
     except ModuleNotFoundError:
         from src.demo_data import generate_demo_data
 
-    # Check if this session already has a demo user
+    # Check if this session already has a demo user and clean it up
     demo_user_id = session.get('demo_user_id')
 
     if demo_user_id:
-        # Verify demo user still exists
+        # Delete the old demo user data to start fresh
         conn, cursor = sim._get_db_connection()
-        cursor.execute("SELECT user_id, username FROM users WHERE user_id = ?", (demo_user_id,))
-        user_data = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        try:
+            cursor.execute("DELETE FROM transactions WHERE user_id = ?", (demo_user_id,))
+            cursor.execute("DELETE FROM accounts WHERE user_id = ?", (demo_user_id,))
+            cursor.execute("DELETE FROM recurring_expenses WHERE user_id = ?", (demo_user_id,))
+            cursor.execute("DELETE FROM recurring_income WHERE user_id = ?", (demo_user_id,))
+            cursor.execute("DELETE FROM loans WHERE user_id = ?", (demo_user_id,))
+            cursor.execute("DELETE FROM users WHERE user_id = ?", (demo_user_id,))
+            conn.commit()
+            print(f"[DEMO] Cleaned up old demo user {demo_user_id}")
+        except Exception as e:
+            print(f"[DEMO] Error cleaning up old demo user: {e}")
+        finally:
+            cursor.close()
+            conn.close()
 
-        if user_data:
-            # Existing demo user - log them back in
-            user = User(id=str(user_data['user_id']), username=user_data['username'])
-            login_user(user)
-            return jsonify({"success": True, "message": "Welcome back to demo mode!", "setup_needed": False})
+        # Clear the session
+        session.pop('demo_user_id', None)
+        session.pop('is_demo', None)
 
     # Create new demo user with unique session ID
     import uuid
@@ -265,19 +273,45 @@ def demo_login():
     session['is_demo'] = True
 
     # Create accounts for demo user
-    sim.create_account(new_user_id, "Checking Account", "CHECKING", 0)
-    sim.create_account(new_user_id, "Savings Account", "SAVINGS", 0)
-    sim.create_account(new_user_id, "Visa Credit Card", "CREDIT_CARD", 0, credit_limit=5000)
+    print(f"[API] Creating accounts for user {new_user_id}")
+    success1, msg1 = sim.add_single_account(new_user_id, "Checking Account", "CHECKING", 0)
+    print(f"[API] Checking account: {success1} - {msg1}")
+
+    success2, msg2 = sim.add_single_account(new_user_id, "Savings Account", "SAVINGS", 0)
+    print(f"[API] Savings account: {success2} - {msg2}")
+
+    success3, msg3 = sim.add_single_account(new_user_id, "Visa Credit Card", "CREDIT_CARD", 0, credit_limit=5000)
+    print(f"[API] Credit card: {success3} - {msg3}")
 
     # Generate demo data
     data = request.get_json() or {}
     client_date = data.get('client_date')
 
-    # Auto-advance to current date
+    # Auto-advance to current date (this might be deleting the accounts!)
+    print(f"[API] About to call auto_advance_time")
     sim.auto_advance_time(new_user_id, client_date=client_date)
+    print(f"[API] Finished auto_advance_time")
+
+    # Get account IDs to pass to demo data generator
+    print(f"[API] Fetching accounts for user {new_user_id}")
+    accounts = sim.get_accounts_list(new_user_id)
+    print(f"[API] Found {len(accounts)} accounts: {[acc['name'] for acc in accounts]}")
+
+    account_ids = {}
+    for acc in accounts:
+        if acc['name'] == "Checking Account":
+            account_ids['checking'] = acc['account_id']
+        elif acc['name'] == "Savings Account":
+            account_ids['savings'] = acc['account_id']
+        elif acc['name'] == "Visa Credit Card":
+            account_ids['credit_card'] = acc['account_id']
+
+    print(f"[API] Account IDs: {account_ids}")
 
     # Generate realistic transaction history
-    demo_info = generate_demo_data(sim, new_user_id)
+    print(f"[API] About to call generate_demo_data for user {new_user_id}")
+    demo_info = generate_demo_data(sim, new_user_id, account_ids)
+    print(f"[API] generate_demo_data returned: {demo_info}")
 
     # Log in the demo user
     user = User(id=str(new_user_id), username=demo_username)
@@ -437,7 +471,9 @@ def manage_account_api(account_id):
 def get_recurring_expenses_api():
     try:
         expenses = sim.get_recurring_expenses(user_id=current_user.id)
-        # Debug: Found recurring expenses
+        print(f"[API] Recurring expenses for user {current_user.id}: {len(expenses)} found")
+        if len(expenses) > 0:
+            print(f"[API] First expense: {expenses[0]}")
         return jsonify(expenses)
     except Exception as e:
         print(f"ERROR in get_recurring_expenses_api: {e}")
@@ -527,8 +563,12 @@ def manage_recurring_expense_api(expense_id):
 def get_recurring_income_api():
     try:
         income = sim.get_recurring_income(user_id=current_user.id)
+        print(f"[API] Recurring income for user {current_user.id}: {len(income)} found")
+        if len(income) > 0:
+            print(f"[API] First income: {income[0]}")
         return jsonify(income)
     except Exception as e:
+        print(f"ERROR in get_recurring_income_api: {e}")
         return jsonify([])
 
 @app.route('/api/recurring_income', methods=['POST'])

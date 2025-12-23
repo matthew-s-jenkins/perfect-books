@@ -12,12 +12,11 @@ from decimal import Decimal
 
 fake = Faker()
 
-def generate_demo_data(sim, user_id):
+def generate_demo_data(sim, user_id, account_ids):
     """
     Generate realistic demo data for a user.
 
     Creates:
-    - Checking, Savings, Credit Card accounts
     - 3-6 months of income (bi-weekly paychecks)
     - Recurring expenses (rent, utilities, subscriptions)
     - Random expenses (groceries, dining, entertainment, etc.)
@@ -26,34 +25,38 @@ def generate_demo_data(sim, user_id):
     Args:
         sim: BusinessSimulator instance
         user_id: User ID to generate data for
+        account_ids: Dict with 'checking', 'savings', 'credit_card' account IDs
     """
 
     # Get current simulation date
-    status = sim.get_status(user_id)
+    status = sim.get_status_summary(user_id)
     current_date = datetime.strptime(status['date'], '%Y-%m-%d').date()
 
     # Generate data starting 4 months ago
     start_date = current_date - timedelta(days=120)
 
-    # ===== CREATE ACCOUNTS =====
-
-    # Checking Account (primary account)
-    checking_id = sim.create_account(user_id, "Checking Account", "CHECKING", 3500.00)
-
-    # Savings Account
-    savings_id = sim.create_account(user_id, "Savings Account", "SAVINGS", 12000.00)
-
-    # Credit Card
-    credit_card_id = sim.create_account(user_id, "Visa Credit Card", "CREDIT_CARD", 0.00, credit_limit=5000.00)
+    print(f"[DEMO] Generating demo data from {start_date} to {current_date}")
+    print(f"[DEMO] User ID: {user_id}")
+    print(f"[DEMO] Using account IDs: {account_ids}")
 
     # ===== GET CATEGORIES =====
 
     categories = sim.get_expense_categories(user_id)
+    print(f"[DEMO] Found {len(categories)} expense categories")
 
     # Create category lookup by name
     category_map = {}
     for cat in categories:
-        category_map[cat['name']] = cat['id']
+        category_map[cat['name']] = cat['category_id']
+
+    print(f"[DEMO] Category map: {category_map}")
+
+    # Extract account IDs
+    checking_account_id = account_ids.get('checking')
+    savings_account_id = account_ids.get('savings')
+    credit_card_id = account_ids.get('credit_card')
+
+    print(f"[DEMO] Checking: {checking_account_id}, Savings: {savings_account_id}, CC: {credit_card_id}")
 
     # ===== CREATE RECURRING EXPENSES =====
 
@@ -63,43 +66,84 @@ def generate_demo_data(sim, user_id):
         {"description": "Internet", "amount": 60, "day": 10, "category": "Utilities"},
         {"description": "Netflix", "amount": 15.99, "day": 5, "category": "Entertainment"},
         {"description": "Spotify", "amount": 10.99, "day": 8, "category": "Entertainment"},
-        {"description": "Gym Membership", "amount": 45, "day": 1, "category": "Health"},
+        {"description": "Gym Membership", "amount": 45, "day": 1, "category": "Healthcare"},
     ]
 
+    print(f"[DEMO] Adding {len(recurring_expenses)} recurring expenses")
     for rec in recurring_expenses:
         category_id = category_map.get(rec['category'])
-        sim.add_recurring_expense(
+        if category_id is None:
+            print(f"[DEMO] WARNING: Category '{rec['category']}' not found, will be uncategorized")
+
+        success, message = sim.add_recurring_expense(
             user_id=user_id,
             description=rec['description'],
             amount=rec['amount'],
-            account_name="Checking Account",
-            day_of_month=rec['day'],
+            payment_account_id=checking_account_id,
+            due_day_of_month=rec['day'],
             category_id=category_id
         )
+        if not success:
+            print(f"[DEMO] ERROR adding recurring expense '{rec['description']}': {message}")
+        else:
+            print(f"[DEMO] Added recurring expense: {rec['description']}")
+
+    print(f"[DEMO] Recurring expenses added")
+
+    # ===== CREATE RECURRING INCOME =====
+
+    # Note: SQLite doesn't have a built-in way to handle bi-weekly recurring
+    # so we'll add two paycheck entries (on 1st and 15th of each month)
+    recurring_income = [
+        {"name": "Paycheck - 1st", "description": "Bi-weekly paycheck from Acme Corp", "amount": 2100.00},
+        {"name": "Paycheck - 15th", "description": "Bi-weekly paycheck from Acme Corp", "amount": 2100.00},
+    ]
+
+    print(f"[DEMO] Adding {len(recurring_income)} recurring income entries")
+    for rec in recurring_income:
+        success, message = sim.add_recurring_income(
+            user_id=user_id,
+            name=rec['name'],
+            description=rec['description'],
+            amount=rec['amount'],
+            destination_account_id=checking_account_id,
+            frequency='MONTHLY'
+        )
+        if not success:
+            print(f"[DEMO] ERROR adding recurring income '{rec['name']}': {message}")
+        else:
+            print(f"[DEMO] Added recurring income: {rec['name']}")
+
+    print(f"[DEMO] Recurring income added")
 
     # ===== GENERATE HISTORICAL TRANSACTIONS =====
 
     # Generate bi-weekly paychecks (every 14 days)
     paycheck_amount = 2100.00  # ~$54,600/year after taxes
     paycheck_date = start_date
+    paycheck_count = 0
 
     while paycheck_date <= current_date:
-        sim.add_income(
+        sim.log_income(
             user_id=user_id,
+            account_id=checking_account_id,
             description="Paycheck - Acme Corp",
             amount=paycheck_amount,
-            account_name="Checking Account",
-            date=paycheck_date.strftime('%Y-%m-%d')
+            transaction_date=paycheck_date.strftime('%Y-%m-%d')
         )
         paycheck_date += timedelta(days=14)
+        paycheck_count += 1
+
+    print(f"[DEMO] Generated {paycheck_count} paychecks")
 
     # Generate random expenses over the time period
+    # Use actual category names that exist in the database
     expense_templates = [
-        # Groceries (weekly-ish)
-        {"category": "Groceries", "descriptions": ["Whole Foods", "Trader Joe's", "Safeway", "Farmers Market"], "min": 40, "max": 120, "frequency": 7},
+        # Groceries (weekly-ish) - maps to "Food & Dining"
+        {"category": "Food & Dining", "descriptions": ["Whole Foods", "Trader Joe's", "Safeway", "Farmers Market"], "min": 40, "max": 120, "frequency": 7},
 
-        # Dining (2-3x per week)
-        {"category": "Dining", "descriptions": ["Chipotle", "Local Bistro", "Pizza Place", "Thai Restaurant", "Coffee Shop"], "min": 12, "max": 65, "frequency": 3},
+        # Dining (2-3x per week) - maps to "Food & Dining"
+        {"category": "Food & Dining", "descriptions": ["Chipotle", "Local Bistro", "Pizza Place", "Thai Restaurant", "Coffee Shop"], "min": 12, "max": 65, "frequency": 3},
 
         # Gas (weekly)
         {"category": "Transportation", "descriptions": ["Shell Gas Station", "Chevron", "76 Gas"], "min": 35, "max": 55, "frequency": 7},
@@ -110,46 +154,53 @@ def generate_demo_data(sim, user_id):
         # Entertainment (occasional)
         {"category": "Entertainment", "descriptions": ["Movie Theater", "Concert Tickets", "Bowling", "Mini Golf"], "min": 20, "max": 80, "frequency": 14},
 
-        # Health (occasional)
-        {"category": "Health", "descriptions": ["Pharmacy", "Doctor Copay", "Dentist"], "min": 15, "max": 150, "frequency": 30},
+        # Health (occasional) - maps to "Healthcare"
+        {"category": "Healthcare", "descriptions": ["Pharmacy", "Doctor Copay", "Dentist"], "min": 15, "max": 150, "frequency": 30},
     ]
 
     # Generate expenses
     expense_date = start_date
+    expense_count = 0
+    uncategorized_count = 0
     while expense_date <= current_date:
         for template in expense_templates:
             # Random chance based on frequency
             if random.random() < (1.0 / template['frequency']):
                 category_id = category_map.get(template['category'])
+                if category_id is None:
+                    uncategorized_count += 1
                 description = random.choice(template['descriptions'])
                 amount = round(random.uniform(template['min'], template['max']), 2)
 
                 # 80% checking, 20% credit card
-                account = "Checking Account" if random.random() < 0.8 else "Visa Credit Card"
+                account_id = checking_account_id if random.random() < 0.8 else credit_card_id
 
-                sim.add_expense(
+                sim.log_expense(
                     user_id=user_id,
+                    account_id=account_id,
                     description=description,
                     amount=amount,
-                    account_name=account,
                     category_id=category_id,
-                    date=expense_date.strftime('%Y-%m-%d')
+                    transaction_date=expense_date.strftime('%Y-%m-%d')
                 )
+                expense_count += 1
 
         expense_date += timedelta(days=1)
+
+    print(f"[DEMO] Generated {expense_count} expenses ({uncategorized_count} uncategorized)")
 
     # ===== GENERATE SOME TRANSFERS =====
 
     # Transfer to savings monthly
     transfer_date = start_date + timedelta(days=15)
     while transfer_date <= current_date:
-        sim.add_transfer(
+        sim.transfer_between_accounts(
             user_id=user_id,
-            from_account="Checking Account",
-            to_account="Savings Account",
+            from_account_id=checking_account_id,
+            to_account_id=savings_account_id,
             amount=random.randint(200, 500),
             description="Monthly Savings",
-            date=transfer_date.strftime('%Y-%m-%d')
+            transaction_date=transfer_date.strftime('%Y-%m-%d')
         )
         transfer_date += timedelta(days=30)
 
@@ -159,7 +210,7 @@ def generate_demo_data(sim, user_id):
         payment_count = 0
         while payment_date <= current_date and payment_count < 3:
             # Get current credit card balance
-            accounts = sim.get_accounts(user_id)
+            accounts = sim.get_accounts_list(user_id)
             cc_balance = 0
             for acc in accounts:
                 if acc['name'] == "Visa Credit Card":
@@ -169,13 +220,13 @@ def generate_demo_data(sim, user_id):
             if cc_balance > 50:
                 # Pay off 50-100% of balance
                 payment_amount = round(cc_balance * random.uniform(0.5, 1.0), 2)
-                sim.add_transfer(
+                sim.transfer_between_accounts(
                     user_id=user_id,
-                    from_account="Checking Account",
-                    to_account="Visa Credit Card",
+                    from_account_id=checking_account_id,
+                    to_account_id=credit_card_id,
                     amount=payment_amount,
                     description="Credit Card Payment",
-                    date=payment_date.strftime('%Y-%m-%d')
+                    transaction_date=payment_date.strftime('%Y-%m-%d')
                 )
 
             payment_date += timedelta(days=30)

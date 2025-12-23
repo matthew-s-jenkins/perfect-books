@@ -3002,7 +3002,10 @@
 
             // Chart state - persisted to localStorage
             const [primaryChart, setPrimaryChart] = useState(() => localStorage.getItem('analysis_primaryChart') || 'income-spending');
-            const [showSecondChart, setShowSecondChart] = useState(() => localStorage.getItem('analysis_secondaryChart') !== null);
+            const [showSecondChart, setShowSecondChart] = useState(() => {
+                const saved = localStorage.getItem('analysis_showSecondChart');
+                return saved === 'true';  // Default to false (single chart)
+            });
             const [secondaryChart, setSecondaryChart] = useState(() => localStorage.getItem('analysis_secondaryChart') || 'cash-balance');
             const [selectedCreditAccounts, setSelectedCreditAccounts] = useState({});
             const [selectedCategoryId, setSelectedCategoryId] = useState(null);
@@ -3094,10 +3097,12 @@
 
             const handleAddChart = () => {
                 setShowSecondChart(true);
+                localStorage.setItem('analysis_showSecondChart', 'true');
             };
 
             const handleRemoveChart = () => {
                 setShowSecondChart(false);
+                localStorage.setItem('analysis_showSecondChart', 'false');
             };
 
             return (

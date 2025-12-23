@@ -503,7 +503,7 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT DISTINCT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter + search_filter + category_filter +
+                    "    WHERE user_id = ? AND description != 'Time Advanced' AND description != 'Initial Balance' " + date_filter + reversal_filter + search_filter + category_filter +
                     "      AND transaction_uuid IN ( "
                     "        SELECT transaction_uuid FROM financial_ledger WHERE user_id = ? AND account = ? " + date_filter + reversal_filter +
                     "      ) "
@@ -526,7 +526,7 @@ class BusinessSimulator:
                     "JOIN ( "
                     "    SELECT transaction_uuid, MAX(transaction_date) as max_date, MAX(entry_id) as max_id "
                     "    FROM financial_ledger "
-                    "    WHERE user_id = ? AND description != 'Time Advanced' " + date_filter + reversal_filter + search_filter + category_filter +
+                    "    WHERE user_id = ? AND description != 'Time Advanced' AND description != 'Initial Balance' " + date_filter + reversal_filter + search_filter + category_filter +
                     "    GROUP BY transaction_uuid "
                     "    ORDER BY max_date DESC, max_id DESC "
                     "    LIMIT ? OFFSET ? "
@@ -1319,20 +1319,23 @@ class BusinessSimulator:
 
     def _create_initial_balance_entry(self, cursor, user_id, uuid, transaction_date, account_name, balance):
         fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        
+
+        # Convert Decimal to float for SQLite compatibility
+        balance_float = float(balance) if isinstance(balance, Decimal) else balance
+
         if balance >= 0:
             # Asset: Debit the asset account, Credit Equity
-            cursor.execute(fin_query, (user_id, uuid, transaction_date, account_name, 'Initial Balance', balance, 0))
-            cursor.execute(fin_query, (user_id, uuid, transaction_date, 'Equity', 'Initial Balance', 0, balance))
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, account_name, 'Initial Balance', balance_float, 0))
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, 'Equity', 'Initial Balance', 0, balance_float))
         else:
             # Liability: Debit Equity, Credit the liability account
-            cursor.execute(fin_query, (user_id, uuid, transaction_date, 'Equity', 'Initial Balance', abs(balance), 0))
-            cursor.execute(fin_query, (user_id, uuid, transaction_date, account_name, 'Initial Balance', 0, abs(balance)))
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, 'Equity', 'Initial Balance', abs(balance_float), 0))
+            cursor.execute(fin_query, (user_id, uuid, transaction_date, account_name, 'Initial Balance', 0, abs(balance_float)))
 
         # Update the balance of the single Equity account
         cursor.execute(
             "UPDATE accounts SET balance = balance + ? WHERE user_id = ? AND name = 'Equity'",
-            (balance, user_id)
+            (balance_float, user_id)
         )
 
 
@@ -1658,9 +1661,13 @@ class BusinessSimulator:
                 if not cursor.fetchone():
                     return False, "Invalid category specified."
 
+            # Convert Decimal to float for SQLite compatibility
+            amount_float = float(amount)
+            estimated_amount_float = float(estimated_amount) if estimated_amount else None
+
             cursor.execute(
                 "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount) VALUES (?, ?, ?, 'MONTHLY', ?, ?, ?, ?, ?)",
-                (user_id, description, amount, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount)
+                (user_id, description, amount_float, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount_float)
             )
             conn.commit()
             return True, f"Recurring expense '{description}' added."
@@ -1696,13 +1703,13 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             query = """
-                SELECT ri.income_id, ri.description, ri.amount, ri.deposit_day_of_month, ri.last_processed_date,
+                SELECT ri.income_id, ri.name, ri.description, ri.amount, ri.frequency, ri.last_processed_date,
                        ri.is_variable, ri.estimated_amount,
                        a.name AS deposit_account_name
                 FROM recurring_income ri
-                JOIN accounts a ON ri.deposit_account_id = a.account_id
+                JOIN accounts a ON ri.destination_account_id = a.account_id
                 WHERE ri.user_id = ?
-                ORDER BY ri.deposit_day_of_month, ri.description
+                ORDER BY ri.name
             """
             cursor.execute(query, (user_id,))
             return self._rows_to_dicts(cursor.fetchall())
@@ -1710,20 +1717,22 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def add_recurring_income(self, user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable=False, estimated_amount=None):
+    def add_recurring_income(self, user_id, name, amount, destination_account_id, frequency='MONTHLY', description=None, is_variable=False, estimated_amount=None):
         """Add a new recurring income entry."""
         conn, cursor = self._get_db_connection()
         try:
             amount = Decimal(amount) if amount else Decimal(0)
             if not is_variable and amount <= 0:
                 return False, "Amount must be positive for fixed income."
-            if not 1 <= deposit_day_of_month <= 31:
-                return False, "Deposit day must be between 1 and 31."
+
+            # Convert Decimal to float for SQLite compatibility
+            amount_float = float(amount)
+            estimated_amount_float = float(estimated_amount) if estimated_amount else None
 
             cursor.execute(
-                "INSERT INTO recurring_income (user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable, estimated_amount) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (user_id, description, amount, deposit_account_id, deposit_day_of_month, is_variable, estimated_amount)
+                "INSERT INTO recurring_income (user_id, name, description, amount, frequency, destination_account_id, is_variable, estimated_amount) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, name, description, amount_float, frequency, destination_account_id, is_variable, estimated_amount_float)
             )
             conn.commit()
             return True, "Recurring income added successfully."

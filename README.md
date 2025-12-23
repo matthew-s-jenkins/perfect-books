@@ -10,9 +10,16 @@
 
 ### 🚀 Live Demo
 
-**[Explore the Live Application Here](https://web-production-4abea.up.railway.app/index.html)**
+**[Try the Demo Mode](https://perfect-books-b6d39afdd6ad.herokuapp.com/login.html)** - Click "Try Demo" to explore with 4 months of realistic financial data
 
-*Note: This is a live portfolio demo. Please feel free to register a test account and explore the features. As this is not a production environment, please use dummy data for all entries.*
+Experience Perfect Books instantly with:
+- 3 accounts (Checking, Savings, Credit Card)
+- 100+ realistic transactions
+- 6 recurring expenses (rent, utilities, subscriptions)
+- 2 recurring income entries
+- Complete transaction history and analytics
+
+*The demo creates a temporary user with fake data. All demo data is deleted when you log out.*
 
 ---
 
@@ -539,7 +546,8 @@ See full API documentation in the original README or via Swagger (coming soon).
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v3.3 - Analysis & Themes Release)
+### ✅ Current Features (v3.4 - Demo Mode & Themes Release)
+- ✅ **Demo Mode** - One-click demo with 4 months of realistic fake data for portfolio showcase
 - ✅ **Customizable Themes** - 6 beautiful themes (Classic, Midnight, Emerald, Amber, Rose, Slate)
 - ✅ **Theme Persistence** - Selected theme saved to localStorage and applies across all pages
 - ✅ **Easy Theme Customization** - All colors in separate `themes.js` file for non-technical editing
@@ -578,9 +586,8 @@ See full API documentation in the original README or via Swagger (coming soon).
 - ✅ Expense analysis with drill-down
 - ✅ CSV export
 
-### 🔮 Planned Features (v3.4)
+### 🔮 Planned Features (v3.5)
 - [ ] **Power BI Dashboard Integration** - ODBC connection to SQLite
-- [ ] **Demo Mode** - Fake data for portfolio showcase
 - [ ] **Bi-weekly/Custom Recurring** - Support for 14-day and custom interval recurring transactions
 - [ ] Budget planning and alerts
 - [ ] Financial goal tracking
