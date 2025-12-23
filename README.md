@@ -21,6 +21,8 @@ Experience Perfect Books instantly with:
 
 *The demo creates a temporary user with fake data. All demo data is deleted when you log out.*
 
+> **Note:** Chrome may show a security warning for this demo hosted on Heroku's free tier. This is a personal portfolio project with no real financial data. Click "Details" then "Visit this unsafe site" to proceed safely.
+
 ---
 
 ## 📋 Table of Contents
