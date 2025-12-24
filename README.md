@@ -116,7 +116,7 @@ See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for complete technical details.
 
 ### Interactive Web Dashboard
 
-![Perfect Books Demo](screenshots/Dashboard.gif)
+![Perfect Books Demo](screenshots/DemoDash.gif)
 
 *Multi-page React interface with real-time financial tracking, expense categorization, and automated recurring bill management.*
 
