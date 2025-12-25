@@ -339,7 +339,6 @@ def logout():
                 cursor.execute("DELETE FROM recurring_expenses WHERE user_id = ?", (demo_user_id,))
                 cursor.execute("DELETE FROM recurring_income WHERE user_id = ?", (demo_user_id,))
                 cursor.execute("DELETE FROM expense_categories WHERE user_id = ?", (demo_user_id,))
-                cursor.execute("DELETE FROM income_categories WHERE user_id = ?", (demo_user_id,))
                 cursor.execute("DELETE FROM accounts WHERE user_id = ?", (demo_user_id,))
                 cursor.execute("DELETE FROM users WHERE user_id = ?", (demo_user_id,))
                 conn.commit()
