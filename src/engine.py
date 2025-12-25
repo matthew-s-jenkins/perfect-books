@@ -2981,20 +2981,21 @@ class BusinessSimulator:
             income_by_description = self._rows_to_dicts(cursor.fetchall())
 
             # Get income breakdown by category (for Income by Source chart)
+            # Uses expense_categories since income categories are stored there with parent_id linking to income parent groups
             cursor.execute("""
                 SELECT
-                    COALESCE(ic.name, 'Uncategorized') as name,
-                    COALESCE(ic.color, '#10b981') as color,
+                    COALESCE(ec.name, 'Uncategorized') as name,
+                    COALESCE(ec.color, '#10b981') as color,
                     SUM(l.credit) as amount
                 FROM financial_ledger l
-                LEFT JOIN income_categories ic ON l.category_id = ic.category_id
+                LEFT JOIN expense_categories ec ON l.category_id = ec.category_id
                 WHERE l.user_id = ?
                     AND l.account = 'Income'
                     AND l.transaction_date BETWEEN ? AND ?
                     AND l.is_reversal = 0
                     AND l.description != 'Time Advanced'
                     AND l.description != 'Initial Balance'
-                GROUP BY ic.category_id, ic.name, ic.color
+                GROUP BY ec.category_id, ec.name, ec.color
                 ORDER BY amount DESC
             """, (user_id, start_date_str, current_date_str))
             income_by_category = self._rows_to_dicts(cursor.fetchall())

@@ -10,7 +10,7 @@
 
 ### 🚀 Live Demo
 
-**[Try the Demo Mode](https://https://perfect-books-4b41d9988243.herokuapp.com/login.html)** - Click "Try Demo" to explore with 4 months of realistic financial data
+**[Try the Demo Mode](https://perfect-books-4b41d9988243.herokuapp.com/login.html)** - Click "Try Demo" to explore with 4 months of realistic financial data
 
 Experience Perfect Books instantly with:
 - 3 accounts (Checking, Savings, Credit Card)
