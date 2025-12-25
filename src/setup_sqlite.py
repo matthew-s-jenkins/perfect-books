@@ -96,7 +96,22 @@ def create_database():
         print("OK")
 
         # =================================================================
-        # TABLE 3: expense_categories - User-defined categories
+        # TABLE 3: parent_categories - Category groups for organization
+        # =================================================================
+        print("Creating table 'parent_categories'...", end=" ")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS parent_categories (
+                parent_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                type TEXT CHECK(type IN ('income', 'expense', 'both')) NOT NULL DEFAULT 'expense',
+                display_order INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        print("OK")
+
+        # =================================================================
+        # TABLE 4: expense_categories - User-defined categories
         # =================================================================
         print("Creating table 'expense_categories'...", end=" ")
         cursor.execute("""
@@ -105,18 +120,21 @@ def create_database():
                 user_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 color TEXT DEFAULT '#6366f1',
+                parent_id INTEGER DEFAULT NULL,
                 is_default INTEGER DEFAULT 0,
                 is_monthly INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id) REFERENCES parent_categories(parent_id) ON DELETE SET NULL,
                 UNIQUE(user_id, name)
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_categories_user_id ON expense_categories(user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON expense_categories(parent_id);")
         print("OK")
 
         # =================================================================
-        # TABLE 4: financial_ledger - Double-entry accounting ledger
+        # TABLE 5: financial_ledger - Double-entry accounting ledger
         # =================================================================
         print("Creating table 'financial_ledger'...", end=" ")
         cursor.execute("""
@@ -141,7 +159,7 @@ def create_database():
         print("OK")
 
         # =================================================================
-        # TABLE 5: recurring_expenses - Automated bill payments
+        # TABLE 6: recurring_expenses - Automated bill payments
         # =================================================================
         print("Creating table 'recurring_expenses'...", end=" ")
         cursor.execute("""
@@ -166,7 +184,7 @@ def create_database():
         print("OK")
 
         # =================================================================
-        # TABLE 6: recurring_income - Automated income deposits
+        # TABLE 7: recurring_income - Automated income deposits
         # =================================================================
         print("Creating table 'recurring_income'...", end=" ")
         cursor.execute("""
@@ -177,6 +195,7 @@ def create_database():
                 description TEXT DEFAULT NULL,
                 amount TEXT NOT NULL,
                 frequency TEXT CHECK(frequency IN ('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY')) NOT NULL,
+                due_day_of_month INTEGER NOT NULL DEFAULT 1,
                 destination_account_id INTEGER NOT NULL,
                 last_processed_date TEXT DEFAULT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -190,7 +209,7 @@ def create_database():
         print("OK")
 
         # =================================================================
-        # TABLE 7: loans - Debt tracking with payment schedules
+        # TABLE 8: loans - Debt tracking with payment schedules
         # =================================================================
         print("Creating table 'loans'...", end=" ")
         cursor.execute("""
@@ -210,7 +229,7 @@ def create_database():
         print("OK")
 
         # =================================================================
-        # TABLE 8: schema_version - Migration tracking
+        # TABLE 9: schema_version - Migration tracking
         # =================================================================
         print("Creating table 'schema_version'...", end=" ")
         cursor.execute("""

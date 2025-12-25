@@ -281,28 +281,11 @@ class BusinessSimulator:
                 (username, password_hash.decode('utf-8'))
             )
             new_user_id = cursor.lastrowid
-
-            # Initialize default expense categories for the new user
-            default_categories = [
-                ('Uncategorized', '#6b7280', True),
-                ('Food & Dining', '#ef4444', False),
-                ('Transportation', '#f59e0b', False),
-                ('Housing', '#8b5cf6', False),
-                ('Utilities', '#3b82f6', False),
-                ('Entertainment', '#ec4899', False),
-                ('Shopping', '#10b981', False),
-                ('Healthcare', '#14b8a6', False),
-                ('Personal', '#f97316', False),
-                ('Other', '#6366f1', False)
-            ]
-
-            for name, color, is_default in default_categories:
-                cursor.execute(
-                    "INSERT INTO expense_categories (user_id, name, color, is_default) VALUES (?, ?, ?, ?)",
-                    (new_user_id, name, color, is_default)
-                )
-
             conn.commit()
+
+            # Initialize default expense categories for the new user (separate connection)
+            self.initialize_default_categories(new_user_id)
+
             return True, "User registered successfully.", new_user_id
         except Exception as e:
             conn.rollback()
@@ -377,26 +360,64 @@ class BusinessSimulator:
             conn.close()
 
     def initialize_default_categories(self, user_id):
-        """Create default expense categories for a new user."""
+        """Create default expense categories and parent groups for a new user."""
         conn, cursor = self._get_db_connection()
         try:
-            default_categories = [
-                ('Uncategorized', '#6b7280', True),
-                ('Food & Dining', '#ef4444', False),
-                ('Transportation', '#f59e0b', False),
-                ('Housing', '#8b5cf6', False),
-                ('Utilities', '#3b82f6', False),
-                ('Entertainment', '#ec4899', False),
-                ('Shopping', '#10b981', False),
-                ('Healthcare', '#14b8a6', False),
-                ('Personal', '#f97316', False),
-                ('Other', '#6366f1', False)
+            # ===== STEP 1: Create parent category groups (shared across all users) =====
+            parent_categories = [
+                ('Earned Income', 'income', 1),
+                ('Investment & Passive Income', 'income', 2),
+                ('Essential Living', 'expense', 3),
+                ('Transportation', 'expense', 4),
+                ('Food & Lifestyle', 'expense', 5),
+                ('Personal & Healthcare', 'expense', 6),
+                ('Other', 'both', 7),
             ]
 
-            for name, color, is_default in default_categories:
+            parent_id_map = {}
+            for name, cat_type, display_order in parent_categories:
+                # Check if parent already exists
+                cursor.execute("SELECT parent_id FROM parent_categories WHERE name = ?", (name,))
+                existing = cursor.fetchone()
+                if existing:
+                    parent_id_map[name] = existing[0]
+                else:
+                    cursor.execute(
+                        "INSERT INTO parent_categories (name, type, display_order) VALUES (?, ?, ?)",
+                        (name, cat_type, display_order)
+                    )
+                    parent_id_map[name] = cursor.lastrowid
+
+            # ===== STEP 2: Create user categories with parent assignments =====
+            # Format: (name, color, is_default, parent_name)
+            default_categories = [
+                # System default
+                ('Uncategorized', '#6b7280', True, 'Other'),
+
+                # Income categories
+                ('W2 Job Income', '#10b981', False, 'Earned Income'),
+                ('Freelance Income', '#059669', False, 'Earned Income'),
+                ('Business Income', '#6ee7b7', False, 'Earned Income'),
+                ('Investment Income', '#34d399', False, 'Investment & Passive Income'),
+                ('Other Income', '#a7f3d0', False, 'Other'),
+
+                # Expense categories
+                ('Housing', '#8b5cf6', False, 'Essential Living'),
+                ('Utilities', '#3b82f6', False, 'Essential Living'),
+                ('Transportation', '#f59e0b', False, 'Transportation'),
+                ('Food & Dining', '#ef4444', False, 'Food & Lifestyle'),
+                ('Entertainment', '#ec4899', False, 'Food & Lifestyle'),
+                ('Shopping', '#10b981', False, 'Food & Lifestyle'),
+                ('Healthcare', '#14b8a6', False, 'Personal & Healthcare'),
+                ('Personal', '#f97316', False, 'Personal & Healthcare'),
+                ('Other Expenses', '#6366f1', False, 'Other'),
+            ]
+
+            for name, color, is_default, parent_name in default_categories:
+                parent_id = parent_id_map.get(parent_name)
                 cursor.execute(
-                    "INSERT INTO expense_categories (user_id, name, color, is_default) VALUES (?, ?, ?, ?)",
-                    (user_id, name, color, is_default)
+                    "INSERT INTO expense_categories (user_id, name, color, is_default, parent_id) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, name, color, is_default, parent_id)
                 )
 
             conn.commit()
@@ -707,8 +728,8 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             cursor.execute(
-                """SELECT ec.category_id, ec.name, ec.color, ec.is_default, ec.is_monthly, ec.description,
-                          pc.name as parent_name, pc.parent_id
+                """SELECT ec.category_id, ec.name, ec.color, ec.is_default, ec.is_monthly, ec.created_at,
+                          ec.parent_id, pc.name as parent_name
                    FROM expense_categories ec
                    LEFT JOIN parent_categories pc ON ec.parent_id = pc.parent_id
                    WHERE ec.user_id = ?
@@ -835,21 +856,9 @@ class BusinessSimulator:
     # --- INCOME CATEGORY METHODS ---
     def get_income_categories(self, user_id):
         """Get all income categories for a user."""
-        conn, cursor = self._get_db_connection()
-        try:
-            cursor.execute(
-                """SELECT ic.category_id, ic.name, ic.color, ic.is_default, ic.description,
-                          pc.name as parent_name, pc.parent_id
-                   FROM income_categories ic
-                   LEFT JOIN parent_categories pc ON ic.parent_id = pc.parent_id
-                   WHERE ic.user_id = ?
-                   ORDER BY pc.display_order, ic.name ASC""",
-                (user_id,)
-            )
-            return self._rows_to_dicts(cursor.fetchall())
-        finally:
-            cursor.close()
-            conn.close()
+        # Income categories feature not yet implemented in schema
+        # Return empty list for now to prevent crashes
+        return []
 
     def add_income_category(self, user_id, name, color='#10b981', parent_id=None, description=None):
         """Add a new income category."""
@@ -1562,7 +1571,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def log_income(self, user_id, account_id, description, amount, transaction_date=None, cursor=None):
+    def log_income(self, user_id, account_id, description, amount, transaction_date=None, category_id=None, cursor=None):
         conn = None
         if not cursor:
             conn, cursor = self._get_db_connection()
@@ -1592,9 +1601,9 @@ class BusinessSimulator:
 
             uuid = f"income-{user_id}-{int(time.time())}-{time.time()}"
 
-            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)"
-            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0))
-            cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount))
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0, category_id))
+            cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount, category_id))
 
             # Balance is now calculated from ledger - no manual update needed
             if conn: conn.commit()
@@ -1703,8 +1712,9 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             query = """
-                SELECT ri.income_id, ri.name, ri.description, ri.amount, ri.frequency, ri.last_processed_date,
-                       ri.is_variable, ri.estimated_amount,
+                SELECT ri.income_id, ri.name, ri.description, ri.amount, ri.frequency,
+                       ri.due_day_of_month AS deposit_day_of_month,
+                       ri.last_processed_date, ri.is_variable, ri.estimated_amount,
                        a.name AS deposit_account_name
                 FROM recurring_income ri
                 JOIN accounts a ON ri.destination_account_id = a.account_id
@@ -1717,7 +1727,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def add_recurring_income(self, user_id, name, amount, destination_account_id, frequency='MONTHLY', description=None, is_variable=False, estimated_amount=None):
+    def add_recurring_income(self, user_id, name, amount, destination_account_id, frequency='MONTHLY', due_day_of_month=1, description=None, is_variable=False, estimated_amount=None):
         """Add a new recurring income entry."""
         conn, cursor = self._get_db_connection()
         try:
@@ -1730,9 +1740,9 @@ class BusinessSimulator:
             estimated_amount_float = float(estimated_amount) if estimated_amount else None
 
             cursor.execute(
-                "INSERT INTO recurring_income (user_id, name, description, amount, frequency, destination_account_id, is_variable, estimated_amount) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (user_id, name, description, amount_float, frequency, destination_account_id, is_variable, estimated_amount_float)
+                "INSERT INTO recurring_income (user_id, name, description, amount, frequency, due_day_of_month, destination_account_id, is_variable, estimated_amount) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, name, description, amount_float, frequency, due_day_of_month, destination_account_id, is_variable, estimated_amount_float)
             )
             conn.commit()
             return True, "Recurring income added successfully."
@@ -1775,7 +1785,7 @@ class BusinessSimulator:
             existing = self._row_to_dict(cursor.fetchone())
 
             cursor.execute(
-                "UPDATE recurring_income SET description = ?, amount = ?, deposit_day_of_month = ?, is_variable = ?, estimated_amount = ? "
+                "UPDATE recurring_income SET description = ?, amount = ?, due_day_of_month = ?, is_variable = ?, estimated_amount = ? "
                 "WHERE income_id = ? AND user_id = ?",
                 (description, amount, deposit_day_of_month, is_variable, estimated_amount, income_id, user_id)
             )

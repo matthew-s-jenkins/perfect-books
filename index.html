@@ -1531,10 +1531,13 @@
                                 return acc;
                             }, {assets: 0, liabilities: 0, equity: 0});
 
-                            // Check if this is an expense transaction
+                            // Check if this is an expense or income transaction
                             const expenseEntry = transaction.entries.find(e => e.account === 'Expenses');
+                            const incomeEntry = transaction.entries.find(e => e.account === 'Income');
                             const isExpense = !!expenseEntry;
-                            const categoryInfo = expenseEntry ? { id: expenseEntry.category_id, name: expenseEntry.category_name, color: expenseEntry.category_color } : null;
+                            const isIncome = !!incomeEntry;
+                            const categoryInfo = expenseEntry ? { id: expenseEntry.category_id, name: expenseEntry.category_name, color: expenseEntry.category_color } :
+                                                 incomeEntry ? { id: incomeEntry.category_id, name: incomeEntry.category_name, color: incomeEntry.category_color } : null;
 
                             // Determine amount color when filtered by account
                             let amountColor = 'text-cyan-400';
@@ -1587,7 +1590,7 @@
                                             </>
                                         )}
                                     </div>
-                                    {isExpense && (
+                                    {(isExpense || isIncome) && (
                                         <div className="mt-2 ml-0 md:ml-20 flex items-center">
                                             {editingCategory === transaction.uuid ? (
                                                 <div className="flex items-center space-x-2">
@@ -3207,7 +3210,8 @@
 
             const refreshIncomeCategories = async () => {
                 try {
-                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/income_categories`);
+                    // Income categories use the same categories as expenses
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories`);
                     if (response.ok) {
                         const data = await response.json();
                         setIncomeCategories(data);
@@ -3472,7 +3476,30 @@
                 return groups;
             };
 
-            const currentCategories = activeTab === 'expense' ? categories : incomeCategories;
+            // Filter categories based on parent type
+            const filterCategoriesByType = (cats, type) => {
+                // Get parent categories of the right type
+                const validParentNames = parentCategories
+                    .filter(p => p.type === type || p.type === 'both')
+                    .map(p => p.name);
+
+                // Filter categories: include if parent matches type, or if ungrouped (based on category name pattern)
+                return cats.filter(cat => {
+                    if (cat.parent_name) {
+                        return validParentNames.includes(cat.parent_name);
+                    }
+                    // For ungrouped categories, use naming convention
+                    if (type === 'income') {
+                        return cat.name.toLowerCase().includes('income');
+                    } else {
+                        return !cat.name.toLowerCase().includes('income');
+                    }
+                });
+            };
+
+            const currentCategories = activeTab === 'expense'
+                ? filterCategoriesByType(categories, 'expense')
+                : filterCategoriesByType(incomeCategories, 'income');
             const groupedCategories = groupByParent(currentCategories);
 
             const startEditing = (cat) => {
@@ -4434,7 +4461,7 @@
             );
         }
 
-        function LogIncomeForm({ accounts, onClose, onIncomeAdded, suggestions, showToast, status, preselectedAccountName }) {
+        function LogIncomeForm({ accounts, onClose, onIncomeAdded, suggestions, showToast, categories, status, preselectedAccountName }) {
             const [description, setDescription] = useState('');
             const [amount, setAmount] = useState('');
             const [amountDisplay, setAmountDisplay] = useState('');
@@ -4446,6 +4473,7 @@
                 }
                 return '';
             });
+            const [selectedCategoryId, setSelectedCategoryId] = useState('');
             const [transactionDate, setTransactionDate] = useState(() => {
                 if (status?.date) {
                     const d = new Date(status.date + 'T12:00:00');
@@ -4474,7 +4502,10 @@
                         account_id: parseInt(selectedAccountId)
                     };
 
-                    // Add optional transaction date if provided
+                    // Add optional fields if provided
+                    if (selectedCategoryId) {
+                        payload.category_id = parseInt(selectedCategoryId);
+                    }
                     if (transactionDate) {
                         payload.transaction_date = transactionDate;
                     }
@@ -4508,6 +4539,17 @@
                                 <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
                                     <option value="">-- Select an Account --</option>
                                     {accounts.map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-gray-400 mb-2">Category (defaults to Uncategorized)</label>
+                                <select value={selectedCategoryId} onChange={(e) => setSelectedCategoryId(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded">
+                                    <option value="">-- Select Category (Optional) --</option>
+                                    {categories && categories.filter(cat => !cat.is_default).map(cat => (
+                                        <option key={cat.category_id} value={cat.category_id}>
+                                            {cat.name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="mb-4">
@@ -5614,7 +5656,7 @@
                         )}
                     </main>
                     {isTransferFormVisible && <TransferForm accounts={accounts.filter(acc => !['EQUITY'].includes(acc.type))} onClose={() => setIsTransferFormVisible(false)} onTransferComplete={handleTransactionAdded} showToast={showToast} status={status}/>}
-                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type))} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions} showToast={showToast} status={status} preselectedAccountName={ledgerAccountFilter}/>}
+                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type))} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions} showToast={showToast} categories={expenseCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
                     {isExpenseFormVisible && <LogExpenseForm accounts={accounts.filter(acc => !['FIXED_ASSET', 'LOAN', 'EQUITY'].includes(acc.type))} onClose={() => setIsExpenseFormVisible(false)} onExpenseAdded={handleTransactionAdded} suggestions={expenseDescriptions} showToast={showToast} categories={expenseCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
                     {showPendingModal && <PendingTransactionsModal onClose={() => setShowPendingModal(false)} onApprove={handleTransactionAdded} />}
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

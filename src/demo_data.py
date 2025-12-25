@@ -95,8 +95,8 @@ def generate_demo_data(sim, user_id, account_ids):
     # Note: SQLite doesn't have a built-in way to handle bi-weekly recurring
     # so we'll add two paycheck entries (on 1st and 15th of each month)
     recurring_income = [
-        {"name": "Paycheck - 1st", "description": "Bi-weekly paycheck from Acme Corp", "amount": 2100.00},
-        {"name": "Paycheck - 15th", "description": "Bi-weekly paycheck from Acme Corp", "amount": 2100.00},
+        {"name": "Paycheck - 1st", "description": "Bi-weekly paycheck from Acme Corp", "amount": 2100.00, "day": 1},
+        {"name": "Paycheck - 15th", "description": "Bi-weekly paycheck from Acme Corp", "amount": 2100.00, "day": 15},
     ]
 
     print(f"[DEMO] Adding {len(recurring_income)} recurring income entries")
@@ -107,7 +107,8 @@ def generate_demo_data(sim, user_id, account_ids):
             description=rec['description'],
             amount=rec['amount'],
             destination_account_id=checking_account_id,
-            frequency='MONTHLY'
+            frequency='MONTHLY',
+            due_day_of_month=rec['day']
         )
         if not success:
             print(f"[DEMO] ERROR adding recurring income '{rec['name']}': {message}")
@@ -117,6 +118,11 @@ def generate_demo_data(sim, user_id, account_ids):
     print(f"[DEMO] Recurring income added")
 
     # ===== GENERATE HISTORICAL TRANSACTIONS =====
+
+    # Get W2 Job Income category for paychecks
+    w2_category_id = category_map.get('W2 Job Income')
+    if not w2_category_id:
+        print(f"[DEMO] WARNING: W2 Job Income category not found")
 
     # Generate bi-weekly paychecks (every 14 days)
     paycheck_amount = 2100.00  # ~$54,600/year after taxes
@@ -129,7 +135,8 @@ def generate_demo_data(sim, user_id, account_ids):
             account_id=checking_account_id,
             description="Paycheck - Acme Corp",
             amount=paycheck_amount,
-            transaction_date=paycheck_date.strftime('%Y-%m-%d')
+            transaction_date=paycheck_date.strftime('%Y-%m-%d'),
+            category_id=w2_category_id
         )
         paycheck_date += timedelta(days=14)
         paycheck_count += 1

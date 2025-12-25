@@ -1100,6 +1100,7 @@ def log_income_api():
     description = data.get('description')
     amount = data.get('amount')
     transaction_date = data.get('transaction_date')  # Optional custom date
+    category_id = data.get('category_id')  # Optional category
 
     if not all([account_id, description, amount]):
         return jsonify({"success": False, "message":"Missing required fields."}), 400
@@ -1109,7 +1110,8 @@ def log_income_api():
         account_id=account_id,
         description=description,
         amount=amount,
-        transaction_date=transaction_date
+        transaction_date=transaction_date,
+        category_id=category_id
     )
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
