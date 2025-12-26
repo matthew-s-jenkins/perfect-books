@@ -3792,6 +3792,7 @@
 
         function RecurringIncomePage({ accounts, onDataChange }) {
             const [income, setIncome] = useState([]);
+            const [categories, setCategories] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [error, setError] = useState('');
 
@@ -3800,6 +3801,8 @@
             const [newAmountDisplay, setNewAmountDisplay] = useState('');
             const [newDepositAccountId, setNewDepositAccountId] = useState('');
             const [newDepositDay, setNewDepositDay] = useState(new Date().getDate().toString());
+            const [newFrequency, setNewFrequency] = useState('MONTHLY');
+            const [newCategoryId, setNewCategoryId] = useState('');
             const [newIsVariable, setNewIsVariable] = useState(false);
             const [newEstimatedAmount, setNewEstimatedAmount] = useState('');
             const [newEstimatedAmountDisplay, setNewEstimatedAmountDisplay] = useState('');
@@ -3809,23 +3812,49 @@
             const [editingAmount, setEditingAmount] = useState('');
             const [editingAmountDisplay, setEditingAmountDisplay] = useState('');
             const [editingDepositDay, setEditingDepositDay] = useState('');
+            const [editingFrequency, setEditingFrequency] = useState('MONTHLY');
+            const [editingCategoryId, setEditingCategoryId] = useState('');
             const [editingIsVariable, setEditingIsVariable] = useState(false);
             const [editingEstimatedAmount, setEditingEstimatedAmount] = useState('');
             const [editingEstimatedAmountDisplay, setEditingEstimatedAmountDisplay] = useState('');
 
+            const frequencyOptions = [
+                { value: 'DAILY', label: 'Daily' },
+                { value: 'WEEKLY', label: 'Weekly' },
+                { value: 'BI_WEEKLY', label: 'Bi-Weekly' },
+                { value: 'MONTHLY', label: 'Monthly' },
+                { value: 'QUARTERLY', label: 'Quarterly' },
+                { value: 'YEARLY', label: 'Yearly' }
+            ];
+
             const mountedRef = React.useRef(true);
+
+            // Filter to only show income categories
+            const incomeParentNames = ['Earned Income', 'Investment & Passive Income'];
+            const incomeCategories = categories.filter(cat => {
+                if (cat.parent_name) {
+                    return incomeParentNames.includes(cat.parent_name);
+                }
+                return cat.name.toLowerCase().includes('income');
+            });
 
             useEffect(() => {
                 const loadData = async () => {
                     setIsLoading(true);
                     try {
-                        const incomeRes = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_income`);
+                        const [incomeRes, categoriesRes] = await Promise.all([
+                            fetchWithCredentials(`${API_BASE_URL}/api/recurring_income`),
+                            fetchWithCredentials(`${API_BASE_URL}/api/expense_categories`)
+                        ]);
                         if (!incomeRes.ok) throw new Error('Failed to fetch recurring income.');
+                        if (!categoriesRes.ok) throw new Error('Failed to fetch categories.');
 
                         const incomeData = await incomeRes.json();
+                        const categoriesData = await categoriesRes.json();
 
                         if (mountedRef.current) {
                             setIncome(incomeData);
+                            setCategories(categoriesData);
                         }
                     } catch (err) {
                         if (mountedRef.current) setError(err.message);
@@ -3856,6 +3885,8 @@
                             amount: newIsVariable ? (newEstimatedAmount ? parseFloat(newEstimatedAmount) : 0) : parseFloat(newAmount),
                             deposit_account_id: parseInt(newDepositAccountId),
                             deposit_day_of_month: parseInt(newDepositDay),
+                            frequency: newFrequency,
+                            category_id: newCategoryId ? parseInt(newCategoryId) : null,
                             is_variable: newIsVariable,
                             estimated_amount: newIsVariable && newEstimatedAmount ? parseFloat(newEstimatedAmount) : null
                         })
@@ -3870,6 +3901,8 @@
                         setNewEstimatedAmountDisplay('');
                         setNewDepositAccountId('');
                         setNewDepositDay(new Date().getDate().toString());
+                        setNewFrequency('MONTHLY');
+                        setNewCategoryId('');
                         setNewIsVariable(false);
                         onDataChange();
                         const incomeRes = await fetchWithCredentials(`${API_BASE_URL}/api/recurring_income`);
@@ -3903,6 +3936,8 @@
                 setEditingAmount(inc.amount);
                 setEditingAmountDisplay(inc.amount ? parseFloat(inc.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '');
                 setEditingDepositDay(inc.deposit_day_of_month);
+                setEditingFrequency(inc.frequency || 'MONTHLY');
+                setEditingCategoryId(inc.category_id || '');
                 setEditingIsVariable(inc.is_variable || false);
                 setEditingEstimatedAmount(inc.estimated_amount || '');
                 setEditingEstimatedAmountDisplay(inc.estimated_amount ? parseFloat(inc.estimated_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '');
@@ -3912,11 +3947,12 @@
 
             const handleUpdateIncome = async (incomeId) => {
                 try {
-                    // console.log('Updating income with ID:', incomeId);
                     const payload = {
                         description: editingDescription,
                         amount: editingIsVariable ? (editingEstimatedAmount ? parseFloat(editingEstimatedAmount) : 0) : parseFloat(editingAmount),
                         deposit_day_of_month: parseInt(editingDepositDay),
+                        frequency: editingFrequency,
+                        category_id: editingCategoryId ? parseInt(editingCategoryId) : null,
                         is_variable: editingIsVariable,
                         estimated_amount: editingIsVariable && editingEstimatedAmount ? parseFloat(editingEstimatedAmount) : null
                     };
@@ -3955,59 +3991,30 @@
 
                     <div className="bg-gray-700 p-4 rounded-lg mb-4">
                         <h3 className="text-white font-medium mb-3">Add Recurring Income</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
                             <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Description (e.g. DoorDash)" />
                             {!newIsVariable && (
-                                <input
-                                    type="text"
-                                    value={newAmountDisplay}
-                                    onChange={(e) => {
-                                        const raw = e.target.value.replace(/[$,]/g, '');
-                                        setNewAmount(raw);
-                                        if (!raw) {
-                                            setNewAmountDisplay('');
-                                        } else if (!isNaN(raw)) {
-                                            const parts = raw.split('.');
-                                            const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
-                                            const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
-                                            setNewAmountDisplay('$' + wholePart + decimalPart);
-                                        } else {
-                                            setNewAmountDisplay('$' + raw);
-                                        }
-                                    }}
-                                    className="bg-gray-800 text-white p-2 rounded font-mono"
-                                    placeholder="$0.00"
-                                />
+                                <input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="1500.00"/>
                             )}
                             {newIsVariable && (
-                                <input
-                                    type="text"
-                                    value={newEstimatedAmountDisplay}
-                                    onChange={(e) => {
-                                        const raw = e.target.value.replace(/[$,]/g, '');
-                                        setNewEstimatedAmount(raw);
-                                        if (!raw) {
-                                            setNewEstimatedAmountDisplay('');
-                                        } else if (!isNaN(raw)) {
-                                            const parts = raw.split('.');
-                                            const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
-                                            const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
-                                            setNewEstimatedAmountDisplay('$' + wholePart + decimalPart);
-                                        } else {
-                                            setNewEstimatedAmountDisplay('$' + raw);
-                                        }
-                                    }}
-                                    className="bg-gray-800 text-white p-2 rounded font-mono"
-                                    placeholder="$0.00 (est.)"
-                                />
+                                <input type="number" step="0.01" value={newEstimatedAmount} onChange={(e) => setNewEstimatedAmount(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Est. amount"/>
                             )}
+                            <select value={newFrequency} onChange={(e) => setNewFrequency(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
+                                {frequencyOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                            </select>
+                            <input type="number" min="1" max="31" value={newDepositDay} onChange={(e) => setNewDepositDay(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder={newFrequency === 'WEEKLY' || newFrequency === 'BI_WEEKLY' ? 'Day (1-7)' : 'Deposit Day'} title={newFrequency === 'WEEKLY' || newFrequency === 'BI_WEEKLY' ? '1=Mon, 2=Tue... 7=Sun' : 'Day of month (1-31)'} />
                             <select value={newDepositAccountId} onChange={(e) => setNewDepositAccountId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
                                 <option value="">Select Account</option>
                                 {accounts.filter(a => a.type === 'CHECKING' || a.type === 'SAVINGS').map(a => (
                                     <option key={a.account_id} value={a.account_id}>{a.name}</option>
                                 ))}
                             </select>
-                            <input type="number" min="1" max="31" value={newDepositDay} onChange={(e) => setNewDepositDay(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Day of Month" />
+                            <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
+                                <option value="">Category (Opt.)</option>
+                                {incomeCategories.map(cat => (
+                                    <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>
+                                ))}
+                            </select>
                             <button onClick={handleAddIncome} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded">Add</button>
                         </div>
                         <label className="flex items-center mt-2 cursor-pointer text-sm text-gray-300">
@@ -4032,8 +4039,10 @@
                             <tr>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase">Description</th>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Amount</th>
+                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-center hidden sm:table-cell">Freq</th>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-center">Day</th>
-                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden sm:table-cell">Account</th>
+                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden lg:table-cell">Category</th>
+                                <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden md:table-cell">Account</th>
                                 <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Actions</th>
                             </tr>
                         </thead>
@@ -4087,10 +4096,21 @@
                                                     />
                                                 )}
                                             </td>
+                                            <td className="px-2 py-2 text-center hidden sm:table-cell">
+                                                <select value={editingFrequency} onChange={(e) => setEditingFrequency(e.target.value)} className="bg-gray-600 text-white p-1 rounded text-xs">
+                                                    {frequencyOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                                </select>
+                                            </td>
                                             <td className="px-2 py-2 text-center">
                                                 <input type="number" min="1" max="31" value={editingDepositDay} onChange={(e) => setEditingDepositDay(e.target.value)} className="w-12 bg-gray-600 text-white p-1 rounded text-xs text-center" />
                                             </td>
-                                            <td className="px-2 py-2 text-xs text-gray-400 hidden sm:table-cell">{inc.deposit_account_name}</td>
+                                            <td className="px-2 py-2 hidden lg:table-cell">
+                                                <select value={editingCategoryId} onChange={(e) => setEditingCategoryId(e.target.value)} className="bg-gray-600 text-white p-1 rounded text-xs">
+                                                    <option value="">None</option>
+                                                    {incomeCategories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className="px-2 py-2 text-xs text-gray-400 hidden md:table-cell">{inc.deposit_account_name}</td>
                                             <td className="px-1 py-2 text-right text-xs whitespace-nowrap">
                                                 <button onClick={() => handleUpdateIncome(inc.income_id)} className="text-green-400 hover:text-green-300 px-1">✓</button>
                                                 <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300 px-1">✕</button>
@@ -4109,8 +4129,19 @@
                                                     parseFloat(inc.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
                                                 )}
                                             </td>
+                                            <td className="px-2 py-2 text-xs text-gray-400 text-center hidden sm:table-cell">{frequencyOptions.find(f => f.value === inc.frequency)?.label || 'Monthly'}</td>
                                             <td className="px-2 py-2 text-xs sm:text-sm text-center text-white">{inc.deposit_day_of_month}</td>
-                                            <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden sm:table-cell">{inc.deposit_account_name}</td>
+                                            <td className="px-2 py-2 text-xs text-gray-400 hidden lg:table-cell">
+                                                {inc.category_name ? (
+                                                    <span className="inline-flex items-center">
+                                                        <span className="w-2 h-2 rounded-full mr-1" style={{ backgroundColor: inc.category_color || '#6366f1' }}></span>
+                                                        {inc.category_name}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-500">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden md:table-cell">{inc.deposit_account_name}</td>
                                             <td className="px-1 py-2 text-right text-xs whitespace-nowrap">
                                                 <button onClick={() => handleEditClick(inc)} className="text-cyan-400 hover:text-cyan-300 px-1">Edit</button>
                                                 <button onClick={() => handleDeleteIncome(inc.income_id)} className="text-red-400 hover:text-red-300 px-1">Del</button>
@@ -4119,7 +4150,7 @@
                                     )}
                                     {editingId === inc.income_id && (
                                         <tr className="bg-gray-750">
-                                            <td colSpan="5" className="px-4 py-2">
+                                            <td colSpan="7" className="px-4 py-2">
                                                 <label className="flex items-center cursor-pointer text-sm text-gray-300">
                                                     <input
                                                         type="checkbox"
@@ -4157,6 +4188,7 @@
             const [newAmountDisplay, setNewAmountDisplay] = useState('');
             const [newPaymentAccountId, setNewPaymentAccountId] = useState('');
             const [newDueDay, setNewDueDay] = useState('1');
+            const [newFrequency, setNewFrequency] = useState('MONTHLY');
             const [newCategoryId, setNewCategoryId] = useState('');
             const [newIsVariable, setNewIsVariable] = useState(false);
             const [newEstimatedAmount, setNewEstimatedAmount] = useState('');
@@ -4168,9 +4200,30 @@
             const [editingDescription, setEditingDescription] = useState('');
             const [editingAmount, setEditingAmount] = useState('');
             const [editingDueDay, setEditingDueDay] = useState('');
+            const [editingFrequency, setEditingFrequency] = useState('MONTHLY');
             const [editingCategoryId, setEditingCategoryId] = useState('');
             const [editingIsVariable, setEditingIsVariable] = useState(false);
             const [editingEstimatedAmount, setEditingEstimatedAmount] = useState('');
+
+            const frequencyOptions = [
+                { value: 'DAILY', label: 'Daily' },
+                { value: 'WEEKLY', label: 'Weekly' },
+                { value: 'BI_WEEKLY', label: 'Bi-Weekly' },
+                { value: 'MONTHLY', label: 'Monthly' },
+                { value: 'QUARTERLY', label: 'Quarterly' },
+                { value: 'YEARLY', label: 'Yearly' }
+            ];
+
+            // Filter to only show expense categories (not income categories)
+            const expenseCategories = categories.filter(cat => {
+                // If category has a parent, check if parent is expense type
+                if (cat.parent_name) {
+                    const incomeParents = ['Earned Income', 'Investment & Passive Income'];
+                    return !incomeParents.includes(cat.parent_name);
+                }
+                // For ungrouped, exclude if name contains 'income'
+                return !cat.name.toLowerCase().includes('income');
+            });
 
             useEffect(() => {
                 const loadData = async () => {
@@ -4229,6 +4282,7 @@
                         amount: newIsVariable ? (newEstimatedAmount ? parseFloat(newEstimatedAmount) : 0) : parseFloat(newAmount),
                         payment_account_id: parseInt(newPaymentAccountId),
                         due_day_of_month: parseInt(newDueDay),
+                        frequency: newFrequency,
                         category_id: newCategoryId ? parseInt(newCategoryId) : null,
                         is_variable: newIsVariable,
                         estimated_amount: newIsVariable && newEstimatedAmount ? parseFloat(newEstimatedAmount) : null
@@ -4252,6 +4306,7 @@
                         setNewAmountDisplay('');
                         setNewPaymentAccountId('');
                         setNewDueDay('1');
+                        setNewFrequency('MONTHLY');
                         setNewCategoryId('');
                         setNewIsVariable(false);
                         setNewEstimatedAmount('');
@@ -4272,6 +4327,7 @@
                 setEditingDescription(expense.description);
                 setEditingAmount(expense.amount);
                 setEditingDueDay(expense.due_day_of_month);
+                setEditingFrequency(expense.frequency || 'MONTHLY');
                 setEditingCategoryId(expense.category_id || '');
                 setEditingIsVariable(expense.is_variable || false);
                 setEditingEstimatedAmount(expense.estimated_amount || '');
@@ -4285,6 +4341,7 @@
                         description: editingDescription,
                         amount: editingIsVariable ? (editingEstimatedAmount ? parseFloat(editingEstimatedAmount) : 0) : parseFloat(editingAmount),
                         due_day_of_month: parseInt(editingDueDay),
+                        frequency: editingFrequency,
                         category_id: editingCategoryId ? parseInt(editingCategoryId) : null,
                         is_variable: editingIsVariable,
                         estimated_amount: editingIsVariable && editingEstimatedAmount ? parseFloat(editingEstimatedAmount) : null
@@ -4323,7 +4380,7 @@
 
                     <div className="bg-gray-700 p-4 rounded-lg mb-4">
                         <h3 className="text-white font-medium mb-3">Add Recurring Expense</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
                             <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Description (e.g. Netflix)" />
                             {!newIsVariable && (
                                 <input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="15.99"/>
@@ -4331,14 +4388,17 @@
                             {newIsVariable && (
                                 <input type="number" step="0.01" value={newEstimatedAmount} onChange={(e) => setNewEstimatedAmount(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Est. amount"/>
                             )}
-                            <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder="Due Day" />
+                            <select value={newFrequency} onChange={(e) => setNewFrequency(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
+                                {frequencyOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                            </select>
+                            <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder={newFrequency === 'WEEKLY' || newFrequency === 'BI_WEEKLY' ? 'Day of Week (1-7)' : 'Due Day'} title={newFrequency === 'WEEKLY' || newFrequency === 'BI_WEEKLY' ? '1=Mon, 2=Tue... 7=Sun' : 'Day of month (1-31)'} />
                             <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
                                 <option value="">Select Account</option>
                                 {accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CREDIT_CARD'].includes(acc.type)).map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
                             </select>
                             <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
                                 <option value="">Category (Opt.)</option>
-                                {categories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
+                                {expenseCategories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
                             </select>
                             <button onClick={handleAddNewExpense} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded">Add</button>
                         </div>
@@ -4356,19 +4416,20 @@
                     {isLoading ? <p>Loading...</p> :
                             <>
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-700">
-                                    <thead className="bg-gray-700">
+                                    <table className="w-full text-left">
+                                    <thead className="border-b border-gray-700">
                                         <tr>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase">Description</th>
-                                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-300 uppercase">Amount</th>
-                                            <th className="px-2 py-2 text-center text-xs font-medium text-gray-300 uppercase">Due</th>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase hidden md:table-cell">Category</th>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase hidden sm:table-cell">Account</th>
-                                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase hidden lg:table-cell">Last Paid</th>
-                                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-300 uppercase">Actions</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase">Description</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Amount</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-center hidden sm:table-cell">Freq</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-center">Due</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden md:table-cell">Category</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden lg:table-cell">Account</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase hidden xl:table-cell">Last Paid</th>
+                                            <th className="px-2 py-3 text-xs font-medium text-gray-400 uppercase text-right">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-gray-800 divide-y divide-gray-700">
+                                    <tbody className="divide-y divide-gray-700">
                                         {expenses.map(exp => (
                                             <React.Fragment key={exp.expense_id}>
                                             <tr>
@@ -4383,15 +4444,20 @@
                                                                 <input type="number" step="0.01" value={editingEstimatedAmount} onChange={e => setEditingEstimatedAmount(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-20 text-right text-xs" placeholder="Est."/>
                                                             )}
                                                         </td>
+                                                        <td className="px-2 py-2 hidden sm:table-cell">
+                                                            <select value={editingFrequency} onChange={e => setEditingFrequency(e.target.value)} className="bg-gray-700 text-white p-1 rounded text-xs">
+                                                                {frequencyOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                                            </select>
+                                                        </td>
                                                         <td className="px-2 py-2"><input type="number" value={editingDueDay} onChange={e => setEditingDueDay(e.target.value)} className="bg-gray-700 text-white p-1 rounded w-12 text-center text-xs"/></td>
                                                         <td className="px-2 py-2 hidden md:table-cell">
                                                             <select value={editingCategoryId} onChange={e => setEditingCategoryId(e.target.value)} className="bg-gray-700 text-white p-1 rounded text-xs w-full">
                                                                 <option value="">No Category</option>
-                                                                {categories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
+                                                                {expenseCategories.map(cat => <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>)}
                                                             </select>
                                                         </td>
-                                                        <td className="px-2 py-2 text-xs text-gray-500 hidden sm:table-cell">{exp.payment_account_name}</td>
-                                                        <td className="px-2 py-2 hidden lg:table-cell"></td>
+                                                        <td className="px-2 py-2 text-xs text-gray-500 hidden lg:table-cell">{exp.payment_account_name}</td>
+                                                        <td className="px-2 py-2 hidden xl:table-cell"></td>
                                                         <td className="px-1 py-2 text-xs text-right whitespace-nowrap">
                                                             <button onClick={() => handleUpdateExpense(exp.expense_id)} className="text-green-500 hover:text-green-400 px-1">✓</button>
                                                             <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-300 px-1">✕</button>
@@ -4410,6 +4476,7 @@
                                                                 parseFloat(exp.amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
                                                             )}
                                                         </td>
+                                                        <td className="px-2 py-2 text-xs text-gray-400 text-center hidden sm:table-cell">{frequencyOptions.find(f => f.value === exp.frequency)?.label || 'Monthly'}</td>
                                                         <td className="px-2 py-2 text-xs sm:text-sm text-center">{exp.due_day_of_month}</td>
                                                         <td className="px-2 py-2 text-xs sm:text-sm hidden md:table-cell">
                                                             {exp.category_name ? (
@@ -4420,8 +4487,8 @@
                                                                 <span className="text-gray-500 text-xs">None</span>
                                                             )}
                                                         </td>
-                                                        <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden sm:table-cell">{exp.payment_account_name}</td>
-                                                        <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden lg:table-cell">{exp.last_processed_date ? new Date(exp.last_processed_date).toLocaleDateString('en-CA') : 'Never'}</td>
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden lg:table-cell">{exp.payment_account_name}</td>
+                                                        <td className="px-2 py-2 text-xs sm:text-sm text-gray-400 hidden xl:table-cell">{exp.last_processed_date ? new Date(exp.last_processed_date).toLocaleDateString('en-CA') : 'Never'}</td>
                                                         <td className="px-1 py-2 text-xs text-right whitespace-nowrap">
                                                             <button onClick={() => handleEditClick(exp)} className="text-cyan-400 hover:text-cyan-300 px-1">Edit</button>
                                                             <button onClick={() => handleDelete(exp.expense_id)} className="text-red-500 hover:text-red-400 px-1">Del</button>
@@ -4431,7 +4498,7 @@
                                             </tr>
                                             {editingId === exp.expense_id && (
                                                 <tr className="bg-gray-750">
-                                                    <td colSpan="7" className="px-4 py-2">
+                                                    <td colSpan="8" className="px-4 py-2">
                                                         <label className="flex items-center cursor-pointer text-sm text-gray-300">
                                                             <input
                                                                 type="checkbox"
@@ -5432,6 +5499,22 @@
             const [incomeDescriptions, setIncomeDescriptions] = useState([]);
             const [expenseDescriptions, setExpenseDescriptions] = useState([]);
             const [expenseCategories, setExpenseCategories] = useState([]);
+
+            // Filter categories by type for forms
+            const incomeParentNames = ['Earned Income', 'Investment & Passive Income'];
+            const filteredExpenseCategories = expenseCategories.filter(cat => {
+                if (cat.parent_name) {
+                    return !incomeParentNames.includes(cat.parent_name);
+                }
+                return !cat.name.toLowerCase().includes('income');
+            });
+            const filteredIncomeCategories = expenseCategories.filter(cat => {
+                if (cat.parent_name) {
+                    return incomeParentNames.includes(cat.parent_name);
+                }
+                return cat.name.toLowerCase().includes('income');
+            });
+
             const [meterData, setMeterData] = useState(null);
             const [averageData, setAverageData] = useState(null);
             const [status, setStatus] = useState(null);
@@ -5656,8 +5739,8 @@
                         )}
                     </main>
                     {isTransferFormVisible && <TransferForm accounts={accounts.filter(acc => !['EQUITY'].includes(acc.type))} onClose={() => setIsTransferFormVisible(false)} onTransferComplete={handleTransactionAdded} showToast={showToast} status={status}/>}
-                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type))} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions} showToast={showToast} categories={expenseCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
-                    {isExpenseFormVisible && <LogExpenseForm accounts={accounts.filter(acc => !['FIXED_ASSET', 'LOAN', 'EQUITY'].includes(acc.type))} onClose={() => setIsExpenseFormVisible(false)} onExpenseAdded={handleTransactionAdded} suggestions={expenseDescriptions} showToast={showToast} categories={expenseCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
+                    {isIncomeFormVisible && <LogIncomeForm accounts={accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type))} onClose={() => setIsIncomeFormVisible(false)} onIncomeAdded={handleTransactionAdded} suggestions={incomeDescriptions} showToast={showToast} categories={filteredIncomeCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
+                    {isExpenseFormVisible && <LogExpenseForm accounts={accounts.filter(acc => !['FIXED_ASSET', 'LOAN', 'EQUITY'].includes(acc.type))} onClose={() => setIsExpenseFormVisible(false)} onExpenseAdded={handleTransactionAdded} suggestions={expenseDescriptions} showToast={showToast} categories={filteredExpenseCategories} status={status} preselectedAccountName={ledgerAccountFilter}/>}
                     {showPendingModal && <PendingTransactionsModal onClose={() => setShowPendingModal(false)} onApprove={handleTransactionAdded} />}
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
                 </div>

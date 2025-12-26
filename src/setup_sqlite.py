@@ -168,7 +168,7 @@ def create_database():
                 user_id INTEGER NOT NULL,
                 description TEXT NOT NULL,
                 amount TEXT NOT NULL,
-                frequency TEXT CHECK(frequency IN ('DAILY', 'WEEKLY', 'MONTHLY')) NOT NULL,
+                frequency TEXT CHECK(frequency IN ('DAILY', 'WEEKLY', 'BI_WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')) NOT NULL DEFAULT 'MONTHLY',
                 due_day_of_month INTEGER NOT NULL DEFAULT 1,
                 last_processed_date TEXT DEFAULT NULL,
                 payment_account_id INTEGER DEFAULT NULL,
@@ -194,18 +194,21 @@ def create_database():
                 name TEXT NOT NULL,
                 description TEXT DEFAULT NULL,
                 amount TEXT NOT NULL,
-                frequency TEXT CHECK(frequency IN ('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY')) NOT NULL,
+                frequency TEXT CHECK(frequency IN ('DAILY', 'WEEKLY', 'BI_WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')) NOT NULL DEFAULT 'MONTHLY',
                 due_day_of_month INTEGER NOT NULL DEFAULT 1,
                 destination_account_id INTEGER NOT NULL,
+                category_id INTEGER DEFAULT NULL,
                 last_processed_date TEXT DEFAULT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 is_variable INTEGER DEFAULT 0,
                 estimated_amount TEXT DEFAULT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-                FOREIGN KEY (destination_account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+                FOREIGN KEY (destination_account_id) REFERENCES accounts(account_id) ON DELETE CASCADE,
+                FOREIGN KEY (category_id) REFERENCES expense_categories(category_id) ON DELETE SET NULL
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_recurring_income_user_id ON recurring_income(user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_recurring_income_category_id ON recurring_income(category_id);")
         print("OK")
 
         # =================================================================

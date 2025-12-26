@@ -663,7 +663,7 @@ class BusinessSimulator:
         conn, cursor = self._get_db_connection()
         try:
             query = """
-                SELECT r.expense_id, r.description, r.amount, r.due_day_of_month, r.last_processed_date, r.category_id,
+                SELECT r.expense_id, r.description, r.amount, r.frequency, r.due_day_of_month, r.last_processed_date, r.category_id,
                        r.is_variable, r.estimated_amount,
                        a.name AS payment_account_name, c.name AS category_name, c.color AS category_color
                 FROM recurring_expenses r
@@ -1618,20 +1618,22 @@ class BusinessSimulator:
                 if conn: conn.close()
 
 
-    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month, category_id=None, is_variable=False, estimated_amount=None):
+    def add_recurring_expense(self, user_id, description, amount, payment_account_id, due_day_of_month, category_id=None, frequency='MONTHLY', is_variable=False, estimated_amount=None):
         """
-        Add a new monthly recurring expense with optional category.
+        Add a new recurring expense with optional category and frequency.
 
-        Creates a recurring expense that will be automatically processed on the
-        specified day of each month during time advancement.
+        Creates a recurring expense that will be automatically processed based on
+        the specified frequency during time advancement.
 
         Args:
             user_id (int): User creating the recurring expense
             description (str): Description of the expense (e.g., "Rent", "Netflix")
-            amount (float/Decimal): Monthly payment amount (must be positive)
+            amount (float/Decimal): Payment amount (must be positive)
             payment_account_id (int): Account ID to pay from (must belong to user)
-            due_day_of_month (int): Day of month when payment is due (1-31)
+            due_day_of_month (int): Day of month (1-31) for monthly/quarterly/yearly,
+                                    or day of week (1=Mon, 7=Sun) for weekly/bi-weekly
             category_id (int, optional): Expense category ID (must belong to user)
+            frequency (str): Payment frequency - DAILY, WEEKLY, BI_WEEKLY, MONTHLY, QUARTERLY, YEARLY
 
         Returns:
             tuple: (success bool, message str)
@@ -1643,6 +1645,7 @@ class BusinessSimulator:
             - Due day must be between 1 and 31
             - Payment account must exist and belong to user
             - Category (if provided) must exist and belong to user
+            - Frequency must be valid
 
         Example:
             success, msg = sim.add_recurring_expense(
@@ -1651,9 +1654,14 @@ class BusinessSimulator:
                 amount=15.99,
                 payment_account_id=1,
                 due_day_of_month=15,
-                category_id=6  # Entertainment category
+                category_id=6,  # Entertainment category
+                frequency='MONTHLY'
             )
         """
+        valid_frequencies = ('DAILY', 'WEEKLY', 'BI_WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')
+        if frequency not in valid_frequencies:
+            return False, f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}"
+
         conn, cursor = self._get_db_connection()
         try:
             amount = Decimal(amount)
@@ -1675,8 +1683,8 @@ class BusinessSimulator:
             estimated_amount_float = float(estimated_amount) if estimated_amount else None
 
             cursor.execute(
-                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount) VALUES (?, ?, ?, 'MONTHLY', ?, ?, ?, ?, ?)",
-                (user_id, description, amount_float, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount_float)
+                "INSERT INTO recurring_expenses (user_id, description, amount, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, description, amount_float, frequency, payment_account_id, due_day_of_month, category_id, is_variable, estimated_amount_float)
             )
             conn.commit()
             return True, f"Recurring expense '{description}' added."
@@ -1715,9 +1723,12 @@ class BusinessSimulator:
                 SELECT ri.income_id, ri.name, ri.description, ri.amount, ri.frequency,
                        ri.due_day_of_month AS deposit_day_of_month,
                        ri.last_processed_date, ri.is_variable, ri.estimated_amount,
-                       a.name AS deposit_account_name
+                       ri.category_id,
+                       a.name AS deposit_account_name,
+                       c.name AS category_name, c.color AS category_color
                 FROM recurring_income ri
                 JOIN accounts a ON ri.destination_account_id = a.account_id
+                LEFT JOIN expense_categories c ON ri.category_id = c.category_id
                 WHERE ri.user_id = ?
                 ORDER BY ri.name
             """
@@ -1727,7 +1738,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def add_recurring_income(self, user_id, name, amount, destination_account_id, frequency='MONTHLY', due_day_of_month=1, description=None, is_variable=False, estimated_amount=None):
+    def add_recurring_income(self, user_id, name, amount, destination_account_id, frequency='MONTHLY', due_day_of_month=1, description=None, category_id=None, is_variable=False, estimated_amount=None):
         """Add a new recurring income entry."""
         conn, cursor = self._get_db_connection()
         try:
@@ -1735,14 +1746,20 @@ class BusinessSimulator:
             if not is_variable and amount <= 0:
                 return False, "Amount must be positive for fixed income."
 
+            # Validate category if provided
+            if category_id:
+                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = ? AND user_id = ?", (category_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Invalid category specified."
+
             # Convert Decimal to float for SQLite compatibility
             amount_float = float(amount)
             estimated_amount_float = float(estimated_amount) if estimated_amount else None
 
             cursor.execute(
-                "INSERT INTO recurring_income (user_id, name, description, amount, frequency, due_day_of_month, destination_account_id, is_variable, estimated_amount) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (user_id, name, description, amount_float, frequency, due_day_of_month, destination_account_id, is_variable, estimated_amount_float)
+                "INSERT INTO recurring_income (user_id, name, description, amount, frequency, due_day_of_month, destination_account_id, category_id, is_variable, estimated_amount) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, name, description, amount_float, frequency, due_day_of_month, destination_account_id, category_id, is_variable, estimated_amount_float)
             )
             conn.commit()
             return True, "Recurring income added successfully."
@@ -1770,8 +1787,12 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_recurring_income(self, user_id, income_id, description, amount, deposit_day_of_month, is_variable=False, estimated_amount=None):
+    def update_recurring_income(self, user_id, income_id, description, amount, deposit_day_of_month, frequency='MONTHLY', category_id=None, is_variable=False, estimated_amount=None):
         """Update a recurring income entry."""
+        valid_frequencies = ('DAILY', 'WEEKLY', 'BI_WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')
+        if frequency not in valid_frequencies:
+            return False, f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}"
+
         conn, cursor = self._get_db_connection()
         try:
             amount = Decimal(amount) if amount else Decimal(0)
@@ -1780,14 +1801,20 @@ class BusinessSimulator:
             if not 1 <= deposit_day_of_month <= 31:
                 return False, "Deposit day must be between 1 and 31."
 
+            # Validate category if provided
+            if category_id:
+                cursor.execute("SELECT 1 FROM expense_categories WHERE category_id = ? AND user_id = ?", (category_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Invalid category specified."
+
             # Check if the record exists first
             cursor.execute("SELECT income_id, user_id FROM recurring_income WHERE income_id = ?", (income_id,))
             existing = self._row_to_dict(cursor.fetchone())
 
             cursor.execute(
-                "UPDATE recurring_income SET description = ?, amount = ?, due_day_of_month = ?, is_variable = ?, estimated_amount = ? "
+                "UPDATE recurring_income SET description = ?, amount = ?, due_day_of_month = ?, frequency = ?, category_id = ?, is_variable = ?, estimated_amount = ? "
                 "WHERE income_id = ? AND user_id = ?",
-                (description, amount, deposit_day_of_month, is_variable, estimated_amount, income_id, user_id)
+                (description, amount, deposit_day_of_month, frequency, category_id, is_variable, estimated_amount, income_id, user_id)
             )
 
             if cursor.rowcount == 0:
@@ -1802,7 +1829,11 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month, category_id=None, is_variable=False, estimated_amount=None):
+    def update_recurring_expense(self, user_id, expense_id, description, amount, due_day_of_month, category_id=None, frequency='MONTHLY', is_variable=False, estimated_amount=None):
+        valid_frequencies = ('DAILY', 'WEEKLY', 'BI_WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')
+        if frequency not in valid_frequencies:
+            return False, f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}"
+
         conn, cursor = self._get_db_connection()
         try:
             # Convert amount to Decimal if provided
@@ -1838,8 +1869,8 @@ class BusinessSimulator:
 
             # Perform the update
             cursor.execute(
-                "UPDATE recurring_expenses SET description = ?, amount = ?, due_day_of_month = ?, category_id = ?, is_variable = ?, estimated_amount = ? WHERE expense_id = ? AND user_id = ?",
-                (description, amount, due_day_of_month, category_id, is_variable, estimated_amount, expense_id, user_id)
+                "UPDATE recurring_expenses SET description = ?, amount = ?, due_day_of_month = ?, category_id = ?, frequency = ?, is_variable = ?, estimated_amount = ? WHERE expense_id = ? AND user_id = ?",
+                (description, amount, due_day_of_month, category_id, frequency, is_variable, estimated_amount, expense_id, user_id)
             )
 
             conn.commit()
@@ -2506,26 +2537,69 @@ class BusinessSimulator:
                 days_in_month = calendar.monthrange(current_day.year, current_day.month)[1]
 
                 for expense in recurring_expenses:
-                    # Handle bills due on days that don't exist in current month (e.g., day 31 in Feb)
-                    # Process on last day of month if due day is greater than days in month
-                    effective_due_day = min(expense['due_day_of_month'], days_in_month)
+                    frequency = expense.get('frequency', 'MONTHLY')
+                    is_due_for_payment = False
+                    last_processed = expense.get('last_processed_date')
 
-                    if current_day.day == effective_due_day:
-                        is_due_for_payment = False
-                        last_processed = expense.get('last_processed_date') # Use .get() for safety
+                    # Ensure last_processed is a date object (not datetime)
+                    if last_processed and isinstance(last_processed, datetime.datetime):
+                        last_processed = last_processed.date()
+                    elif last_processed and isinstance(last_processed, str):
+                        try:
+                            last_processed = datetime.datetime.strptime(last_processed.split(' ')[0], '%Y-%m-%d').date()
+                        except ValueError:
+                            last_processed = None
 
-                        # Ensure last_processed is a date object (not datetime)
-                        if last_processed and isinstance(last_processed, datetime.datetime):
-                            last_processed = last_processed.date()
-
-                        if not last_processed:
-                            # If it's never been paid, it's due today.
+                    # Determine if payment is due based on frequency
+                    if frequency == 'DAILY':
+                        # Due every day
+                        if not last_processed or current_day > last_processed:
                             is_due_for_payment = True
-                        elif (current_day.year, current_day.month) > (last_processed.year, last_processed.month):
-                            # If today is in a later month than the last payment, it's due.
-                            is_due_for_payment = True
 
-                        if is_due_for_payment:
+                    elif frequency == 'WEEKLY':
+                        # Due every 7 days from due_day_of_month (treated as day of week: 1=Mon, 7=Sun)
+                        due_weekday = (expense['due_day_of_month'] - 1) % 7  # Convert to Python weekday (0=Mon)
+                        if current_day.weekday() == due_weekday:
+                            if not last_processed or (current_day - last_processed).days >= 7:
+                                is_due_for_payment = True
+
+                    elif frequency == 'BI_WEEKLY':
+                        # Due every 14 days from due_day_of_month (treated as day of week)
+                        due_weekday = (expense['due_day_of_month'] - 1) % 7
+                        if current_day.weekday() == due_weekday:
+                            if not last_processed or (current_day - last_processed).days >= 14:
+                                is_due_for_payment = True
+
+                    elif frequency == 'MONTHLY':
+                        # Handle bills due on days that don't exist in current month
+                        effective_due_day = min(expense['due_day_of_month'], days_in_month)
+                        if current_day.day == effective_due_day:
+                            if not last_processed:
+                                is_due_for_payment = True
+                            elif (current_day.year, current_day.month) > (last_processed.year, last_processed.month):
+                                is_due_for_payment = True
+
+                    elif frequency == 'QUARTERLY':
+                        # Due every 3 months on due_day_of_month
+                        effective_due_day = min(expense['due_day_of_month'], days_in_month)
+                        if current_day.day == effective_due_day:
+                            if not last_processed:
+                                is_due_for_payment = True
+                            else:
+                                months_diff = (current_day.year - last_processed.year) * 12 + (current_day.month - last_processed.month)
+                                if months_diff >= 3:
+                                    is_due_for_payment = True
+
+                    elif frequency == 'YEARLY':
+                        # Due once a year on due_day_of_month in the same month as first payment
+                        effective_due_day = min(expense['due_day_of_month'], days_in_month)
+                        if current_day.day == effective_due_day:
+                            if not last_processed:
+                                is_due_for_payment = True
+                            elif current_day.year > last_processed.year and current_day.month >= last_processed.month:
+                                is_due_for_payment = True
+
+                    if is_due_for_payment:
                             # Check if this is a variable expense
                             if expense.get('is_variable'):
                                 # CREATE PENDING TRANSACTION instead of auto-paying
@@ -2578,23 +2652,65 @@ class BusinessSimulator:
 
                 # Process recurring income
                 for income in recurring_income:
-                    # Handle income due on days that don't exist in current month
-                    income_effective_due_day = min(income['deposit_day_of_month'], days_in_month)
+                    frequency = income.get('frequency', 'MONTHLY')
+                    is_due_for_deposit = False
+                    last_processed = income.get('last_processed_date')
 
-                    if current_day.day == income_effective_due_day:
-                        is_due_for_deposit = False
-                        last_processed = income.get('last_processed_date')
+                    # Ensure last_processed is a date object
+                    if last_processed and isinstance(last_processed, datetime.datetime):
+                        last_processed = last_processed.date()
+                    elif last_processed and isinstance(last_processed, str):
+                        try:
+                            last_processed = datetime.datetime.strptime(last_processed.split(' ')[0], '%Y-%m-%d').date()
+                        except ValueError:
+                            last_processed = None
 
-                        # Ensure last_processed is a date object (not datetime)
-                        if last_processed and isinstance(last_processed, datetime.datetime):
-                            last_processed = last_processed.date()
+                    due_day = income.get('deposit_day_of_month') or income.get('due_day_of_month', 1)
 
-                        if not last_processed:
+                    # Determine if income is due based on frequency
+                    if frequency == 'DAILY':
+                        if not last_processed or current_day > last_processed:
                             is_due_for_deposit = True
-                        elif (current_day.year, current_day.month) > (last_processed.year, last_processed.month):
-                            is_due_for_deposit = True
 
-                        if is_due_for_deposit:
+                    elif frequency == 'WEEKLY':
+                        due_weekday = (due_day - 1) % 7
+                        if current_day.weekday() == due_weekday:
+                            if not last_processed or (current_day - last_processed).days >= 7:
+                                is_due_for_deposit = True
+
+                    elif frequency == 'BI_WEEKLY':
+                        due_weekday = (due_day - 1) % 7
+                        if current_day.weekday() == due_weekday:
+                            if not last_processed or (current_day - last_processed).days >= 14:
+                                is_due_for_deposit = True
+
+                    elif frequency == 'MONTHLY':
+                        effective_due_day = min(due_day, days_in_month)
+                        if current_day.day == effective_due_day:
+                            if not last_processed:
+                                is_due_for_deposit = True
+                            elif (current_day.year, current_day.month) > (last_processed.year, last_processed.month):
+                                is_due_for_deposit = True
+
+                    elif frequency == 'QUARTERLY':
+                        effective_due_day = min(due_day, days_in_month)
+                        if current_day.day == effective_due_day:
+                            if not last_processed:
+                                is_due_for_deposit = True
+                            else:
+                                months_diff = (current_day.year - last_processed.year) * 12 + (current_day.month - last_processed.month)
+                                if months_diff >= 3:
+                                    is_due_for_deposit = True
+
+                    elif frequency == 'YEARLY':
+                        effective_due_day = min(due_day, days_in_month)
+                        if current_day.day == effective_due_day:
+                            if not last_processed:
+                                is_due_for_deposit = True
+                            elif current_day.year > last_processed.year and current_day.month >= last_processed.month:
+                                is_due_for_deposit = True
+
+                    if is_due_for_deposit:
                             # Check if this is a variable income
                             if income.get('is_variable'):
                                 # CREATE PENDING TRANSACTION instead of auto-depositing

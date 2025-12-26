@@ -490,6 +490,7 @@ def add_recurring_expense_api():
     payment_account_id = data.get('payment_account_id')
     due_day_of_month = data.get('due_day_of_month')
     category_id = data.get('category_id')  # Optional category
+    frequency = data.get('frequency', 'MONTHLY')  # Default to monthly
     is_variable = data.get('is_variable', False)
     estimated_amount = data.get('estimated_amount')
 
@@ -503,6 +504,7 @@ def add_recurring_expense_api():
         payment_account_id=payment_account_id,
         due_day_of_month=due_day_of_month,
         category_id=category_id,
+        frequency=frequency,
         is_variable=is_variable,
         estimated_amount=estimated_amount
     )
@@ -521,6 +523,7 @@ def manage_recurring_expense_api(expense_id):
         amount = data.get('amount')
         due_day_of_month = data.get('due_day_of_month')
         category_id = data.get('category_id')  # Optional category
+        frequency = data.get('frequency', 'MONTHLY')  # Default to monthly
         is_variable = data.get('is_variable', False)
         estimated_amount = data.get('estimated_amount')
 
@@ -534,6 +537,7 @@ def manage_recurring_expense_api(expense_id):
             amount=amount,
             due_day_of_month=due_day_of_month,
             category_id=category_id,
+            frequency=frequency,
             is_variable=is_variable,
             estimated_amount=estimated_amount
         )
@@ -579,6 +583,8 @@ def add_recurring_income_api():
     amount = data.get('amount')
     deposit_account_id = data.get('deposit_account_id')
     deposit_day_of_month = data.get('deposit_day_of_month')
+    frequency = data.get('frequency', 'MONTHLY')  # Default to monthly
+    category_id = data.get('category_id')  # Optional category
     is_variable = data.get('is_variable', False)
     estimated_amount = data.get('estimated_amount')
 
@@ -587,10 +593,12 @@ def add_recurring_income_api():
 
     success, message = sim.add_recurring_income(
         user_id=current_user.id,
-        description=description,
+        name=description,  # API uses 'description' but engine expects 'name'
         amount=amount,
-        deposit_account_id=deposit_account_id,
-        deposit_day_of_month=deposit_day_of_month,
+        destination_account_id=deposit_account_id,
+        frequency=frequency,
+        due_day_of_month=deposit_day_of_month,
+        category_id=category_id,
         is_variable=is_variable,
         estimated_amount=estimated_amount
     )
@@ -606,10 +614,11 @@ def add_recurring_income_api():
 def manage_recurring_income_api(income_id):
     if request.method == 'PUT':
         data = request.get_json()
-        # Debug: PUT /api/recurring_income received
         description = data.get('description')
         amount = data.get('amount')
         deposit_day_of_month = data.get('deposit_day_of_month')
+        frequency = data.get('frequency', 'MONTHLY')  # Default to monthly
+        category_id = data.get('category_id')  # Optional category
         is_variable = data.get('is_variable', False)
         estimated_amount = data.get('estimated_amount')
 
@@ -622,6 +631,8 @@ def manage_recurring_income_api(income_id):
             description=description,
             amount=amount,
             deposit_day_of_month=deposit_day_of_month,
+            frequency=frequency,
+            category_id=category_id,
             is_variable=is_variable,
             estimated_amount=estimated_amount
         )
