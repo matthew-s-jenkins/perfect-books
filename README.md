@@ -457,13 +457,15 @@ The database follows **normalized design principles** with referential integrity
 |-------|---------|-------------|
 | `users` | Authentication | user_id, username, password_hash |
 | `accounts` | Financial accounts | account_id, user_id, name, type, balance |
-| `financial_ledger` | **Double-entry ledger** | entry_id, user_id, transaction_uuid, account, debit, credit, category_id, is_reversal, reversal_of_id |
+| `financial_ledger` | **Double-entry ledger** | entry_id, user_id, transaction_uuid, account, debit, credit, category_id, is_reversal, reversal_of_id, **is_business** |
 | `parent_categories` | Category hierarchy | parent_id, name, type (income/expense/both), display_order |
 | `expense_categories` | Expense categories | category_id, user_id, name, color, parent_id |
 | `income_categories` | Income categories | category_id, user_id, name, color, parent_id |
 | `recurring_expenses` | Automated bills | expense_id, user_id, description, amount, due_day_of_month, category_id |
 | `recurring_income` | Automated income | income_id, user_id, description, amount, day_of_month |
 | `loans` | Debt tracking | loan_id, user_id, outstanding_balance, monthly_payment |
+| `budgets` | **Monthly spending limits** | budget_id, user_id, category_id, monthly_limit |
+| `savings_goals` | **Financial goals** | goal_id, user_id, name, target_amount, current_amount, target_date, account_id |
 
 ### Key Design Decisions
 
@@ -548,12 +550,22 @@ See full API documentation in the original README or via Swagger (coming soon).
 
 ## 🗺️ Roadmap
 
-### ✅ Current Features (v3.4 - Demo Mode & Themes Release)
+### ✅ Current Features (v3.5 - Budgeting & Goal Tracking Release)
+- ✅ **Budget Planning** - Set monthly spending limits by category with visual progress tracking
+- ✅ **Budget vs Actual Chart** - Horizontal bar chart comparing budgets to actual spending (red when over)
+- ✅ **Savings Goals** - Create goals with target amounts and dates, track progress with visual indicators
+- ✅ **Goal-Account Linking** - Optionally link goals to accounts for automatic balance sync
+- ✅ **Goal Adjustments** - Add or withdraw from goals with $10 increment controls
+- ✅ **Business Transaction Flag** - Mark income and expenses as business vs personal for tax tracking
+- ✅ **Business Profit Margin Chart** - Track business income vs expenses over time
+- ✅ **Financial Runway Gauge** - Shows months of expenses covered by liquid assets (based on 90-day average)
+- ✅ **Ledger Business Toggle** - Click "B" badge to toggle business flag on existing transactions
+- ✅ **Enhanced Analysis Charts** - 9 chart types including Business Profit, Budget vs Actual, and Runway
 - ✅ **Demo Mode** - One-click demo with 4 months of realistic fake data for portfolio showcase
 - ✅ **Customizable Themes** - 6 beautiful themes (Classic, Midnight, Emerald, Amber, Rose, Slate)
 - ✅ **Theme Persistence** - Selected theme saved to localStorage and applies across all pages
 - ✅ **Easy Theme Customization** - All colors in separate `themes.js` file for non-technical editing
-- ✅ **Analysis Dashboard Overhaul** - 6 interactive chart types with dual-chart view
+- ✅ **Analysis Dashboard Overhaul** - 9 interactive chart types with dual-chart view
 - ✅ **Server-Side Ledger Search** - Search entire database, not just loaded transactions
 - ✅ **Category Filter in Ledger** - Filter transactions by category with dropdown
 - ✅ **Income by Source Analysis** - Toggle between description and category breakdown
@@ -588,11 +600,11 @@ See full API documentation in the original README or via Swagger (coming soon).
 - ✅ Expense analysis with drill-down
 - ✅ CSV export
 
-### 🔮 Planned Features (v3.5)
+### 🔮 Planned Features (v3.6)
 - [ ] **Power BI Dashboard Integration** - ODBC connection to SQLite
 - [ ] **Bi-weekly/Custom Recurring** - Support for 14-day and custom interval recurring transactions
-- [ ] Budget planning and alerts
-- [ ] Financial goal tracking
+- [ ] **Business P&L Report** - Filtered income statement for business transactions
+- [ ] **Personal P&L Report** - Filtered income statement for personal transactions
 - [ ] PDF reports
 
 ### Future Enhancements (v4.0+)

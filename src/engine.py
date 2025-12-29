@@ -518,7 +518,7 @@ class BusinessSimulator:
                 # When filtering by account, get all entries for transactions involving that account
                 query = (
                     "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit, "
-                    "l.category_id, c.name as category_name, c.color as category_color "
+                    "l.category_id, c.name as category_name, c.color as category_color, l.is_business "
                     "FROM financial_ledger l "
                     "LEFT JOIN expense_categories c ON l.category_id = c.category_id "
                     "JOIN ( "
@@ -541,7 +541,7 @@ class BusinessSimulator:
                 # Original query - no account filter
                 query = (
                     "SELECT l.entry_id, l.transaction_uuid, l.transaction_date, l.description, l.account, l.debit, l.credit, "
-                    "l.category_id, c.name as category_name, c.color as category_color "
+                    "l.category_id, c.name as category_name, c.color as category_color, l.is_business "
                     "FROM financial_ledger l "
                     "LEFT JOIN expense_categories c ON l.category_id = c.category_id "
                     "JOIN ( "
@@ -774,7 +774,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def update_expense_category(self, user_id, category_id, name, color, is_monthly=False):
+    def update_expense_category(self, user_id, category_id, name, color, is_monthly=False, parent_id=None):
         """Update an expense category."""
         conn, cursor = self._get_db_connection()
         try:
@@ -787,8 +787,8 @@ class BusinessSimulator:
                 return False, "Category not found or you don't have permission to edit it."
 
             cursor.execute(
-                "UPDATE expense_categories SET name = ?, color = ?, is_monthly = ? WHERE category_id = ?",
-                (name, color, is_monthly, category_id)
+                "UPDATE expense_categories SET name = ?, color = ?, is_monthly = ?, parent_id = ? WHERE category_id = ?",
+                (name, color, is_monthly, parent_id, category_id)
             )
             conn.commit()
             return True, "Category updated successfully."
@@ -1076,6 +1076,35 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
+    def update_transaction_business(self, user_id, transaction_uuid, is_business):
+        """Update the business flag for an expense or income transaction."""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Verify the transaction belongs to the user
+            cursor.execute(
+                "SELECT entry_id FROM financial_ledger WHERE user_id = ? AND transaction_uuid = ? LIMIT 1",
+                (user_id, transaction_uuid)
+            )
+            result = self._row_to_dict(cursor.fetchone())
+
+            if not result:
+                return False, "Transaction not found or you don't have permission."
+
+            # Update the is_business flag for all entries with this transaction_uuid
+            cursor.execute(
+                "UPDATE financial_ledger SET is_business = ? WHERE user_id = ? AND transaction_uuid = ?",
+                (1 if is_business else 0, user_id, transaction_uuid)
+            )
+
+            conn.commit()
+            return True, "Business flag updated successfully."
+        except Exception as e:
+            conn.rollback()
+            return False, f"An error occurred: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
     def get_expense_analysis(self, user_id, start_date=None, end_date=None):
         """Get expense breakdown by category for analysis."""
         conn, cursor = self._get_db_connection()
@@ -1205,17 +1234,20 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def get_n_day_average(self, user_id, days=30, weighted=True):
+    def get_n_day_average(self, user_id, days=30, weighted=True, start_date=None, end_date=None):
         conn, cursor = self._get_db_connection()
         try:
-            current_date_str = self._get_user_current_date(cursor, user_id)
-            current_date = self._from_datetime_str(current_date_str)
-
-            # Calculate start date based on requested days parameter
-            start_date = current_date - datetime.timedelta(days=days - 1)  # -1 because we include today
-            # Use date-only format (YYYY-MM-DD) for DATE() comparisons
-            start_date_str = start_date.strftime('%Y-%m-%d')
-            current_date_str_for_query = current_date.strftime('%Y-%m-%d')
+            # If explicit dates provided, use them; otherwise calculate from days
+            if start_date and end_date:
+                start_date_str = start_date
+                current_date_str_for_query = end_date
+            else:
+                current_date_str = self._get_user_current_date(cursor, user_id)
+                current_date = self._from_datetime_str(current_date_str)
+                # Calculate start date based on requested days parameter
+                start_date_obj = current_date - datetime.timedelta(days=days - 1)  # -1 because we include today
+                start_date_str = start_date_obj.strftime('%Y-%m-%d')
+                current_date_str_for_query = current_date.strftime('%Y-%m-%d')
 
             query = """
                 SELECT
@@ -1571,7 +1603,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def log_income(self, user_id, account_id, description, amount, transaction_date=None, category_id=None, cursor=None):
+    def log_income(self, user_id, account_id, description, amount, transaction_date=None, category_id=None, is_business=False, cursor=None):
         conn = None
         if not cursor:
             conn, cursor = self._get_db_connection()
@@ -1600,10 +1632,11 @@ class BusinessSimulator:
                 current_date = self._get_user_current_date(cursor, user_id)
 
             uuid = f"income-{user_id}-{int(time.time())}-{time.time()}"
+            is_biz = 1 if is_business else 0
 
-            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0, category_id))
-            cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount, category_id))
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id, is_business) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, amount, 0, category_id, is_biz))
+            cursor.execute(fin_query, (user_id, uuid, current_date, 'Income', description, 0, amount, category_id, is_biz))
 
             # Balance is now calculated from ledger - no manual update needed
             if conn: conn.commit()
@@ -1952,7 +1985,7 @@ class BusinessSimulator:
             cursor.close()
             conn.close()
 
-    def log_expense(self, user_id, account_id, description, amount, transaction_date=None, category_id=None, cursor=None):
+    def log_expense(self, user_id, account_id, description, amount, transaction_date=None, category_id=None, is_business=False, cursor=None):
         conn = None
         if not cursor:
             conn, cursor = self._get_db_connection()
@@ -1997,10 +2030,11 @@ class BusinessSimulator:
                 category_id = self.get_default_category_id(user_id)
 
             uuid = f"expense-{user_id}-{int(time.time())}-{time.time()}"
+            is_biz = 1 if is_business else 0
 
-            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            cursor.execute(fin_query, (user_id, uuid, current_date, 'Expenses', description, amount, 0, category_id))
-            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, 0, amount, None))
+            fin_query = "INSERT INTO financial_ledger (user_id, transaction_uuid, transaction_date, account, description, debit, credit, category_id, is_business) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            cursor.execute(fin_query, (user_id, uuid, current_date, 'Expenses', description, amount, 0, category_id, is_biz))
+            cursor.execute(fin_query, (user_id, uuid, current_date, account['name'], description, 0, amount, None, is_biz))
 
             # Balance is now calculated from ledger - no manual update needed
 
@@ -3051,6 +3085,22 @@ class BusinessSimulator:
             start_date_str = self._to_datetime_str(start_date)
             current_date_str = self._to_datetime_str(current_date)  # Convert current_date back to string for query
 
+            # Find the earliest transaction date for this user (for chart limiting)
+            cursor.execute("""
+                SELECT MIN(transaction_date) as first_date
+                FROM financial_ledger
+                WHERE user_id = ? AND description != 'Time Advanced' AND description != 'Initial Balance'
+            """, (user_id,))
+            first_date_result = self._row_to_dict(cursor.fetchone())
+            first_transaction_date_str = first_date_result['first_date'] if first_date_result and first_date_result['first_date'] else start_date_str
+
+            # Use the later of: requested start date or first transaction date
+            # This prevents showing zeros before any data exists
+            if first_transaction_date_str > start_date_str:
+                effective_start_date_str = first_transaction_date_str
+            else:
+                effective_start_date_str = start_date_str
+
             # Get total income and expenses for the period (exclude reversals and system entries)
             cursor.execute("""
                 SELECT
@@ -3117,6 +3167,7 @@ class BusinessSimulator:
             income_by_category = self._rows_to_dicts(cursor.fetchall())
 
             # Get net worth over time (daily snapshots) - exclude reversals
+            # Use effective_start_date_str to avoid showing zeros before first transaction
             cursor.execute("""
                 SELECT DATE(transaction_date) as date,
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as daily_change
@@ -3126,23 +3177,23 @@ class BusinessSimulator:
                     AND l.is_reversal = 0
                 GROUP BY DATE(transaction_date)
                 ORDER BY date
-            """, (user_id, start_date_str, current_date_str))
+            """, (user_id, effective_start_date_str, current_date_str))
             daily_changes = self._rows_to_dicts(cursor.fetchall())
 
-            # Calculate starting balance at the beginning of the period (exclude reversals)
+            # Calculate starting balance at the beginning of the effective period (exclude reversals)
             cursor.execute("""
                 SELECT SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH') THEN debit - credit ELSE 0 END) as balance_before_period
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = ? AND transaction_date < ?
                     AND l.is_reversal = 0
-            """, (user_id, start_date_str))
+            """, (user_id, effective_start_date_str))
             result = self._row_to_dict(cursor.fetchone())
             starting_balance = self._from_money_str(result['balance_before_period']) if result and result['balance_before_period'] else Decimal('0.0')
 
-            # Start with the balance at the beginning of the period
+            # Start with the balance at the beginning of the effective period
             net_worth_trend = [{
-                'date': start_date_str,
+                'date': effective_start_date_str,
                 'net_worth': float(starting_balance)
             }]
             cumulative = float(starting_balance)
@@ -3367,6 +3418,7 @@ class BusinessSimulator:
                 })
 
             # Get assets vs liabilities over time (area chart)
+            # Use effective_start_date_str to avoid showing zeros before first transaction
             cursor.execute("""
                 SELECT DATE(transaction_date) as date,
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'INVESTMENT', 'FIXED_ASSET') THEN debit - credit ELSE 0 END) as asset_change,
@@ -3376,10 +3428,10 @@ class BusinessSimulator:
                 WHERE l.user_id = ? AND transaction_date BETWEEN ? AND ?
                 GROUP BY DATE(transaction_date)
                 ORDER BY date
-            """, (user_id, start_date, current_date))
+            """, (user_id, effective_start_date_str, current_date_str))
             daily_balance_changes = self._rows_to_dicts(cursor.fetchall())
 
-            # Calculate starting assets and liabilities
+            # Calculate starting assets and liabilities at the effective start date
             cursor.execute("""
                 SELECT
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'INVESTMENT', 'FIXED_ASSET') THEN debit - credit ELSE 0 END) as starting_assets,
@@ -3387,14 +3439,14 @@ class BusinessSimulator:
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = ? AND transaction_date < ?
-            """, (user_id, start_date_str))
+            """, (user_id, effective_start_date_str))
             starting = self._row_to_dict(cursor.fetchone())
             cumulative_assets = float(starting['starting_assets'] or 0) if starting else 0.0
             cumulative_liabilities = float(starting['starting_liabilities'] or 0) if starting else 0.0
 
-            # Start with the balance at the beginning of the period
+            # Start with the balance at the beginning of the effective period
             assets_vs_liabilities = [{
-                'date': start_date_str,
+                'date': effective_start_date_str,
                 'assets': float(cumulative_assets),
                 'liabilities': float(cumulative_liabilities)
             }]
@@ -3540,6 +3592,50 @@ class BusinessSimulator:
                     'total_balance': round(total_balance, 2)
                 })
 
+            # Get weekly business income vs expenses (is_business = 1)
+            cursor.execute("""
+                SELECT
+                    MIN(transaction_date) as week_start,
+                    strftime('%Y-%W', transaction_date) as year_week,
+                    SUM(CASE WHEN account = 'Income' THEN credit ELSE 0 END) as income,
+                    SUM(CASE WHEN account = 'Expenses' THEN debit ELSE 0 END) as expenses
+                FROM financial_ledger
+                WHERE user_id = ? AND transaction_date BETWEEN ? AND ?
+                    AND is_reversal = 0
+                    AND is_business = 1
+                GROUP BY strftime('%Y-%W', transaction_date)
+                ORDER BY year_week
+            """, (user_id, start_date_str, current_date_str))
+            business_weekly_data = self._rows_to_dicts(cursor.fetchall())
+            business_weekly = [
+                {
+                    'week_start': row['week_start'],
+                    'income': float(self._from_money_str(row['income'])),
+                    'expenses': float(self._from_money_str(row['expenses']))
+                } for row in business_weekly_data
+            ]
+
+            # Get average monthly personal expenses for RUNWAY calculation
+            # Always use 90 days (or all data if less exists) - independent of date range selector
+            runway_start = current_date - datetime.timedelta(days=90)
+            runway_start_str = self._to_datetime_str(runway_start)
+
+            cursor.execute("""
+                SELECT AVG(monthly_total) as avg_monthly, COUNT(*) as month_count
+                FROM (
+                    SELECT SUM(debit) as monthly_total
+                    FROM financial_ledger
+                    WHERE user_id = ? AND account = 'Expenses'
+                        AND is_reversal = 0
+                        AND is_business = 0
+                        AND transaction_date BETWEEN ? AND ?
+                    GROUP BY strftime('%Y-%m', transaction_date)
+                )
+            """, (user_id, runway_start_str, current_date_str))
+            personal_avg_result = self._row_to_dict(cursor.fetchone())
+            personal_monthly_avg = float(self._from_money_str(personal_avg_result['avg_monthly'])) if personal_avg_result and personal_avg_result['avg_monthly'] else 0.0
+            runway_months_of_data = int(personal_avg_result['month_count'] or 0) if personal_avg_result else 0
+
             return {
                 'total_income': total_income,
                 'total_expenses': total_expenses,
@@ -3551,6 +3647,9 @@ class BusinessSimulator:
                 'net_worth_trend': net_worth_trend,
                 'income_vs_expenses': income_vs_expenses,
                 'weekly_income_expenses': weekly_income_expenses,
+                'business_weekly': business_weekly,
+                'personal_monthly_avg': personal_monthly_avg,
+                'runway_months_of_data': runway_months_of_data,
                 'expenses_over_time': expenses_over_time,
                 'weekly_expenses_by_category': weekly_expenses_by_category,
                 'assets_vs_liabilities': assets_vs_liabilities,
@@ -3560,6 +3659,281 @@ class BusinessSimulator:
                 'credit_balance_trend': credit_balance_trend,
                 'period_days': days
             }
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =========================================================================
+    # BUDGET MANAGEMENT
+    # =========================================================================
+
+    def get_budgets(self, user_id):
+        """Get all budgets for a user with current month spending"""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Get current month's date range
+            current_date_raw = self._get_user_current_date(cursor, user_id)
+            # Convert to datetime if it's a string
+            if isinstance(current_date_raw, str):
+                current_date = datetime.datetime.strptime(current_date_raw[:10], '%Y-%m-%d')
+            else:
+                current_date = current_date_raw
+            month_start = current_date.replace(day=1).strftime('%Y-%m-%d')
+            # Get last day of month
+            if current_date.month == 12:
+                next_month = current_date.replace(year=current_date.year + 1, month=1, day=1)
+            else:
+                next_month = current_date.replace(month=current_date.month + 1, day=1)
+            month_end = (next_month - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+
+            query = """
+                SELECT b.budget_id, b.category_id, b.monthly_limit,
+                       c.name as category_name, c.color as category_color,
+                       COALESCE(SUM(CASE
+                           WHEN l.transaction_date >= ? AND l.transaction_date <= ?
+                           AND l.account = 'Expenses' AND l.is_reversal = 0
+                           THEN CAST(l.debit AS REAL)
+                           ELSE 0
+                       END), 0) as spent
+                FROM budgets b
+                JOIN expense_categories c ON b.category_id = c.category_id
+                LEFT JOIN financial_ledger l ON l.category_id = b.category_id AND l.user_id = b.user_id
+                WHERE b.user_id = ?
+                GROUP BY b.budget_id, b.category_id, b.monthly_limit, c.name, c.color
+                ORDER BY c.name
+            """
+            cursor.execute(query, (month_start, month_end, user_id))
+            budgets = self._rows_to_dicts(cursor.fetchall())
+
+            # Calculate percentages and status
+            for budget in budgets:
+                limit = float(budget['monthly_limit'])
+                spent = float(budget['spent'])
+                budget['percentage'] = (spent / limit * 100) if limit > 0 else 0
+                budget['remaining'] = limit - spent
+                if budget['percentage'] >= 100:
+                    budget['status'] = 'exceeded'
+                elif budget['percentage'] >= 80:
+                    budget['status'] = 'warning'
+                else:
+                    budget['status'] = 'ok'
+
+            return budgets
+        finally:
+            cursor.close()
+            conn.close()
+
+    def set_budget(self, user_id, category_id, monthly_limit):
+        """Set or update a budget for a category"""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Use INSERT OR REPLACE to handle both new and existing budgets
+            cursor.execute("""
+                INSERT OR REPLACE INTO budgets (user_id, category_id, monthly_limit)
+                VALUES (?, ?, ?)
+            """, (user_id, category_id, str(monthly_limit)))
+            conn.commit()
+            return True, "Budget saved successfully"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Failed to save budget: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_budget(self, user_id, budget_id):
+        """Delete a budget"""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("DELETE FROM budgets WHERE budget_id = ? AND user_id = ?", (budget_id, user_id))
+            conn.commit()
+            return True, "Budget deleted"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Failed to delete budget: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =========================================================================
+    # SAVINGS GOALS
+    # =========================================================================
+
+    def get_savings_goals(self, user_id):
+        """Get all savings goals for a user"""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("""
+                SELECT g.goal_id, g.name, g.target_amount, g.current_amount, g.target_date,
+                       g.color, g.icon, g.created_at, g.completed_at, g.account_id,
+                       a.name as account_name, a.balance as account_balance
+                FROM savings_goals g
+                LEFT JOIN accounts a ON g.account_id = a.account_id
+                WHERE g.user_id = ?
+                ORDER BY g.completed_at IS NOT NULL, g.target_date, g.name
+            """, (user_id,))
+            goals = self._rows_to_dicts(cursor.fetchall())
+
+            # Calculate percentages - use account balance if linked
+            for goal in goals:
+                target = float(goal['target_amount'])
+                # If linked to an account, use account balance as current amount
+                if goal['account_id'] and goal['account_balance'] is not None:
+                    current = float(goal['account_balance'])
+                    goal['current_amount'] = str(current)
+                    goal['uses_account_balance'] = True
+                else:
+                    current = float(goal['current_amount'])
+                    goal['uses_account_balance'] = False
+                goal['percentage'] = (current / target * 100) if target > 0 else 0
+                goal['remaining'] = target - current
+
+            return goals
+        finally:
+            cursor.close()
+            conn.close()
+
+    def add_savings_goal(self, user_id, name, target_amount, target_date=None, color='#10b981', icon='piggy-bank', account_id=None):
+        """Add a new savings goal"""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Check if account is already linked to another goal
+            if account_id:
+                cursor.execute(
+                    "SELECT goal_id, name FROM savings_goals WHERE user_id = ? AND account_id = ?",
+                    (user_id, account_id)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    return False, f"This account is already linked to goal '{existing[1]}'"
+
+            cursor.execute("""
+                INSERT INTO savings_goals (user_id, name, target_amount, target_date, color, icon, account_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, name, str(target_amount), target_date, color, icon, account_id))
+            conn.commit()
+            return True, cursor.lastrowid
+        except Exception as e:
+            conn.rollback()
+            return False, f"Failed to add goal: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_savings_goal(self, user_id, goal_id, name=None, target_amount=None, current_amount=None, target_date=None, color=None, icon=None, account_id=None, clear_account=False):
+        """Update a savings goal"""
+        conn, cursor = self._get_db_connection()
+        try:
+            # Check if account is already linked to another goal (not this one)
+            if account_id and not clear_account:
+                cursor.execute(
+                    "SELECT goal_id, name FROM savings_goals WHERE user_id = ? AND account_id = ? AND goal_id != ?",
+                    (user_id, account_id, goal_id)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    return False, f"This account is already linked to goal '{existing[1]}'"
+
+            # Build dynamic update query
+            updates = []
+            params = []
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if target_amount is not None:
+                updates.append("target_amount = ?")
+                params.append(str(target_amount))
+            if current_amount is not None:
+                updates.append("current_amount = ?")
+                params.append(str(current_amount))
+                # Check if goal is now complete
+                cursor.execute("SELECT target_amount FROM savings_goals WHERE goal_id = ? AND user_id = ?", (goal_id, user_id))
+                row = cursor.fetchone()
+                if row and float(current_amount) >= float(row[0]):
+                    updates.append("completed_at = CURRENT_TIMESTAMP")
+                else:
+                    updates.append("completed_at = NULL")
+            if target_date is not None:
+                updates.append("target_date = ?")
+                params.append(target_date)
+            if color is not None:
+                updates.append("color = ?")
+                params.append(color)
+            if icon is not None:
+                updates.append("icon = ?")
+                params.append(icon)
+            if clear_account:
+                updates.append("account_id = NULL")
+            elif account_id is not None:
+                updates.append("account_id = ?")
+                params.append(account_id)
+
+            if not updates:
+                return False, "No updates provided"
+
+            params.extend([goal_id, user_id])
+            query = f"UPDATE savings_goals SET {', '.join(updates)} WHERE goal_id = ? AND user_id = ?"
+            cursor.execute(query, params)
+            conn.commit()
+            return True, "Goal updated"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Failed to update goal: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def contribute_to_goal(self, user_id, goal_id, amount):
+        """Add or withdraw money from a savings goal (positive = add, negative = withdraw)"""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("SELECT current_amount, target_amount FROM savings_goals WHERE goal_id = ? AND user_id = ?", (goal_id, user_id))
+            row = cursor.fetchone()
+            if not row:
+                return False, "Goal not found"
+
+            current = float(row[0])
+            target = float(row[1])
+            new_amount = current + float(amount)
+
+            # Don't allow negative balance
+            if new_amount < 0:
+                return False, "Cannot withdraw more than current balance"
+
+            # Update amount and check if complete
+            if new_amount >= target:
+                cursor.execute("""
+                    UPDATE savings_goals
+                    SET current_amount = ?, completed_at = CURRENT_TIMESTAMP
+                    WHERE goal_id = ? AND user_id = ?
+                """, (str(new_amount), goal_id, user_id))
+            else:
+                # If withdrawing from a completed goal, mark it incomplete
+                cursor.execute("""
+                    UPDATE savings_goals SET current_amount = ?, completed_at = NULL
+                    WHERE goal_id = ? AND user_id = ?
+                """, (str(new_amount), goal_id, user_id))
+
+            conn.commit()
+            action = "added" if float(amount) >= 0 else "withdrawn"
+            return True, f"Amount {action} successfully"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Failed to contribute: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_savings_goal(self, user_id, goal_id):
+        """Delete a savings goal"""
+        conn, cursor = self._get_db_connection()
+        try:
+            cursor.execute("DELETE FROM savings_goals WHERE goal_id = ? AND user_id = ?", (goal_id, user_id))
+            conn.commit()
+            return True, "Goal deleted"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Failed to delete goal: {e}"
         finally:
             cursor.close()
             conn.close()

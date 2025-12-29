@@ -116,6 +116,14 @@
         .hover\:bg-yellow-500:hover {
             background-color: var(--color-warning-light) !important;
         }
+        /* Brighter calendar icon for date inputs */
+        .date-input-light::-webkit-calendar-picker-indicator {
+            filter: invert(0.8);
+            cursor: pointer;
+        }
+        .date-input-light::-webkit-calendar-picker-indicator:hover {
+            filter: invert(1);
+        }
     </style>
 </head>
 <body style="background-color: var(--color-bg); color: var(--color-text);" class="font-sans">
@@ -405,49 +413,47 @@
                                 <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: 'var(--color-text)' }}>Perfect Books</h1>
                                 <p className="text-sm sm:text-base" style={{ color: 'var(--color-text-secondary)' }}>Personal Finance Manager</p>
                             </div>
-                            <div className="sm:text-right w-full sm:w-auto">
-                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-2">
-                                    <div>
-                                        <p className="text-base sm:text-lg font-medium" style={{ color: 'var(--color-text)' }}>{formattedDate}</p>
-                                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Current Date</p>
-                                    </div>
-                                    <select
-                                        value={currentTheme}
-                                        onChange={handleThemeChange}
-                                        style={{
-                                            backgroundColor: 'var(--color-bg-tertiary)',
-                                            color: 'var(--color-text)',
-                                            borderColor: 'var(--color-border)'
-                                        }}
-                                        className="px-3 py-1 rounded text-sm focus:outline-none focus:ring-2"
-                                        title="Change theme"
-                                    >
-                                        {Object.keys(THEMES).map(themeKey => (
-                                            <option key={themeKey} value={themeKey}>
-                                                {THEMES[themeKey].name}
-                                            </option>
-                                        ))}
-                                    </select>
+                            <div className="flex items-start gap-4">
+                                <select
+                                    value={currentTheme}
+                                    onChange={handleThemeChange}
+                                    style={{
+                                        backgroundColor: 'var(--color-bg-tertiary)',
+                                        color: 'var(--color-text)',
+                                        borderColor: 'var(--color-border)'
+                                    }}
+                                    className="px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 mt-0.5"
+                                    title="Change theme"
+                                >
+                                    {Object.keys(THEMES).map(themeKey => (
+                                        <option key={themeKey} value={themeKey}>
+                                            {THEMES[themeKey].name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="text-right">
+                                    <p className="text-base font-medium" style={{ color: 'var(--color-text)' }}>{formattedDate}</p>
+                                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Current Date</p>
+                                    {username && (
+                                        <div className="text-xs flex items-center justify-end gap-2 mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                                            <span className="font-medium" style={{ color: 'var(--color-primary)' }}>{username}</span>
+                                            <button
+                                                onClick={() => setShowPasswordModal(true)}
+                                                className="font-medium hover:underline focus:outline-none"
+                                                style={{ color: 'var(--color-primary)' }}
+                                            >
+                                                (change password)
+                                            </button>
+                                            <button
+                                                onClick={handleLogout}
+                                                className="font-medium hover:underline focus:outline-none"
+                                                style={{ color: 'var(--color-danger)' }}
+                                            >
+                                                (logout)
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
-                                {username && (
-                                    <div className="text-xs flex flex-wrap items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-                                        <span className="font-medium" style={{ color: 'var(--color-primary)' }}>{username}</span>
-                                        <button
-                                            onClick={() => setShowPasswordModal(true)}
-                                            className="font-medium hover:underline focus:outline-none"
-                                            style={{ color: 'var(--color-primary)' }}
-                                        >
-                                            (change password)
-                                        </button>
-                                        <button
-                                            onClick={handleLogout}
-                                            className="font-medium hover:underline focus:outline-none"
-                                            style={{ color: 'var(--color-danger)' }}
-                                        >
-                                            (logout)
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </header>
@@ -455,7 +461,36 @@
             );
         }
 
-        function Meter({ averageData, dateRange, setDateRange }) {
+        // Helper function to calculate date range based on selection
+        function getDateRangeInfo(dateRange, statusDate) {
+            const currentDate = statusDate ? new Date(statusDate + 'T12:00:00') : new Date();
+            let startDate, endDate, days;
+
+            if (dateRange === 'this_month') {
+                startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+                endDate = currentDate;
+                days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+            } else if (dateRange === 'last_month') {
+                startDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+                endDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0); // Last day of previous month
+                days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+            } else {
+                days = parseInt(dateRange);
+                endDate = currentDate;
+                startDate = new Date(currentDate.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+            }
+
+            return {
+                startDate,
+                endDate,
+                days,
+                startStr: startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                endStr: endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                label: `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+            };
+        }
+
+        function Meter({ averageData, dateRange, setDateRange, status }) {
             const hasData = averageData && averageData.days > 0;
             const avgNet = hasData ? averageData.average_net : 0;
             const avgIncome = hasData ? averageData.average_income : 0;
@@ -467,21 +502,30 @@
             const formattedIncome = avgIncome.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
             const formattedExpenses = avgExpenses.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
+            const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+
             return (
                 <div className="shadow rounded-lg p-4 mb-6" style={{backgroundColor: 'var(--color-bg-secondary)'}}>
                     <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-lg font-medium" style={{color: 'var(--color-text-secondary)'}}>Daily Average</h2>
-                        <select
-                            value={dateRange}
-                            onChange={(e) => setDateRange(e.target.value)}
-                            className="px-3 py-1 rounded text-sm focus:outline-none focus:ring-2"
-                            style={{backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)', borderColor: 'var(--color-border)'}}
-                        >
-                            <option value="7">7 days</option>
-                            <option value="30">30 days</option>
-                            <option value="60">60 days</option>
-                            <option value="90">90 days</option>
-                        </select>
+                        <div>
+                            <h2 className="text-lg font-medium" style={{color: 'var(--color-text-secondary)'}}>Daily Average</h2>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium" style={{color: 'var(--color-text)'}}>{rangeInfo.label}</span>
+                            <select
+                                value={dateRange}
+                                onChange={(e) => setDateRange(e.target.value)}
+                                className="px-3 py-1 rounded text-sm focus:outline-none focus:ring-2"
+                                style={{backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)', borderColor: 'var(--color-border)'}}
+                            >
+                                <option value="7">7 days</option>
+                                <option value="30">30 days</option>
+                                <option value="60">60 days</option>
+                                <option value="90">90 days</option>
+                                <option value="this_month">This Month</option>
+                                <option value="last_month">Last Month</option>
+                            </select>
+                        </div>
                     </div>
                     {hasData ? (
                         <div>
@@ -1196,6 +1240,48 @@
                 }
             };
 
+            const handleBusinessToggle = async (transactionUuid, currentValue) => {
+                const newValue = !currentValue;
+
+                // Optimistically update local state immediately (no flash)
+                setFilteredLedgerData(prev => prev.map(entry =>
+                    entry.transaction_uuid === transactionUuid
+                        ? { ...entry, is_business: newValue ? 1 : 0 }
+                        : entry
+                ));
+
+                try {
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/transaction/business`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            transaction_uuid: transactionUuid,
+                            is_business: newValue
+                        })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast(newValue ? 'Marked as business' : 'Marked as personal', 'success');
+                    } else {
+                        // Revert on failure
+                        setFilteredLedgerData(prev => prev.map(entry =>
+                            entry.transaction_uuid === transactionUuid
+                                ? { ...entry, is_business: currentValue ? 1 : 0 }
+                                : entry
+                        ));
+                        showToast(result.message, 'error');
+                    }
+                } catch (err) {
+                    // Revert on error
+                    setFilteredLedgerData(prev => prev.map(entry =>
+                        entry.transaction_uuid === transactionUuid
+                            ? { ...entry, is_business: currentValue ? 1 : 0 }
+                            : entry
+                    ));
+                    showToast('Error updating transaction', 'error');
+                }
+            };
+
             const handleColorUpdate = async () => {
                 try {
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_categories/${editingColorCategoryId}`, {
@@ -1246,11 +1332,15 @@
             const groupedTransactions = searchFilteredLedger.reduce((acc, entry) => {
                 const uuid = entry.transaction_uuid || `${entry.transaction_date}_${entry.description}`;
                 if (!acc[uuid]) {
-                    acc[uuid] = { uuid: uuid, date: entry.transaction_date, entries: [], description: entry.description };
+                    acc[uuid] = { uuid: uuid, date: entry.transaction_date, entries: [], description: entry.description, is_business: false };
                 }
                 acc[uuid].entries.push(entry);
                 if (entry.description && !['Time Advanced', 'Initial Balance'].includes(entry.description)) {
                     acc[uuid].description = entry.description;
+                }
+                // Track if any entry in the transaction is marked as business
+                if (entry.is_business) {
+                    acc[uuid].is_business = true;
                 }
                 return acc;
             }, {});
@@ -1423,15 +1513,16 @@
                     <div className="hidden md:flex items-center text-xs uppercase text-gray-400 font-medium px-3 mb-2">
                         <div className="w-20">Date</div>
                         <div className="flex-1">Transaction</div>
-                        <div className="w-32 text-right">Amount</div>
+                        <div className="w-28 text-center hidden lg:block">Category</div>
+                        <div className="w-28 text-right">Amount</div>
                         {accountFilter ? (
-                            <div className="w-32 text-right">Balance</div>
+                            <div className="w-28 text-right">Balance</div>
                         ) : (
                             <>
                                 <div className="w-24 text-center">Assets</div>
-                                <div className="w-8 text-center">=</div>
+                                <div className="w-8 text-center text-gray-300">=</div>
                                 <div className="w-24 text-center">Liabilities</div>
-                                <div className="w-8 text-center">+</div>
+                                <div className="w-8 text-center text-gray-300">+</div>
                                 <div className="w-24 text-center">Equity</div>
                             </>
                         )}
@@ -1484,17 +1575,8 @@
                                         <div key={`${idx}-${debitIdx}`} className="flex items-center bg-gray-700 rounded-lg p-2 md:p-3 hover:bg-gray-650 transition-colors text-sm">
                                             <div className="w-16 md:w-20 text-gray-400 text-xs md:text-sm">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between">
-                                                    <p className="font-medium text-white text-xs md:text-sm truncate flex-1">{transaction.description}</p>
-                                                    {!transaction.description.startsWith('REVERSED:') && !transaction.description.startsWith('REVERSAL OF:') && (
-                                                        <button
-                                                            onClick={() => handleReverse(transaction.uuid, transaction.description)}
-                                                            className="text-red-400 hover:text-red-300 text-xs ml-2 px-2 py-1 hover:bg-gray-600 rounded transition-colors"
-                                                            title="Reverse this transaction"
-                                                        >
-                                                            ✕ Reverse
-                                                        </button>
-                                                    )}
+                                                <div className="flex items-center">
+                                                    <p className="font-medium text-white text-xs md:text-sm truncate">{transaction.description}</p>
                                                 </div>
                                                 <div className="flex items-center text-xs text-gray-300">
                                                     <span className="truncate">{credit ? credit.account : 'Equity'}</span>
@@ -1502,17 +1584,29 @@
                                                     <span className="truncate">{debit.account}</span>
                                                 </div>
                                             </div>
-                                            <div className={`w-20 md:w-32 text-right font-mono ${amountColor} text-xs md:text-sm ml-2`}>{singleAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
+                                            {/* Reverse button column - before Amount */}
+                                            <div className="w-28 flex justify-center hidden lg:flex">
+                                                {!transaction.description.startsWith('REVERSED:') && !transaction.description.startsWith('REVERSAL OF:') && (
+                                                    <button
+                                                        onClick={() => handleReverse(transaction.uuid, transaction.description)}
+                                                        className="text-red-400 hover:text-red-300 text-xs px-2 py-1 hover:bg-gray-600 rounded transition-colors"
+                                                        title="Reverse this transaction"
+                                                    >
+                                                        ✕ Reverse
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className={`w-20 md:w-28 text-right font-mono ${amountColor} text-xs md:text-sm`}>{singleAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
                                             {accountFilter ? (
-                                                <div className="w-32 text-right text-xs font-mono text-yellow-400 hidden md:block">
+                                                <div className="w-28 text-right text-xs font-mono text-yellow-400 hidden md:block">
                                                     {runningBalance !== null && runningBalance !== undefined ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
                                                 </div>
                                             ) : (
                                                 <>
                                                     <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
-                                                    <div className="w-8 text-center text-gray-600 hidden md:block">=</div>
+                                                    <div className="w-8 text-center text-gray-300 hidden md:block">=</div>
                                                     <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
-                                                    <div className="w-8 text-center text-gray-600 hidden md:block">+</div>
+                                                    <div className="w-8 text-center text-gray-300 hidden md:block">+</div>
                                                     <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
                                                 </>
                                             )}
@@ -1553,84 +1647,94 @@
                             }
 
                             return (
-                                <div key={idx} className="bg-gray-700 rounded-lg p-2 md:p-3 hover:bg-gray-650 transition-colors text-sm">
+                                <div key={idx} className="bg-gray-700 rounded-lg p-2 hover:bg-gray-650 transition-colors text-sm">
                                     <div className="flex items-center">
-                                        <div className="w-16 md:w-20 text-gray-400 text-xs md:text-sm">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                        <div className="w-16 md:w-20 text-gray-400 text-xs">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between">
-                                                <p className="font-medium text-white text-xs md:text-sm truncate flex-1">{transaction.description}</p>
-                                                {!transaction.description.startsWith('REVERSED:') && !transaction.description.startsWith('REVERSAL OF:') && (
+                                            <div className="flex items-center">
+                                                <p className="font-medium text-white text-xs md:text-sm truncate">
+                                                    {transaction.description}
+                                                </p>
+                                                {(isExpense || isIncome) && (
                                                     <button
-                                                        onClick={() => handleReverse(transaction.uuid, transaction.description)}
-                                                        className="text-red-400 hover:text-red-300 text-xs ml-2 px-2 py-1 hover:bg-gray-600 rounded transition-colors"
-                                                        title="Reverse this transaction"
+                                                        onClick={() => handleBusinessToggle(transaction.uuid, transaction.is_business)}
+                                                        className={`ml-2 px-1 py-0.5 text-xs rounded flex-shrink-0 transition-colors ${
+                                                            transaction.is_business
+                                                                ? 'bg-blue-600 text-white hover:bg-blue-500'
+                                                                : 'bg-gray-600 text-gray-400 hover:bg-gray-500 hover:text-white'
+                                                        }`}
+                                                        title={transaction.is_business ? 'Click to mark as personal' : 'Click to mark as business'}
                                                     >
-                                                        ✕ Reverse
+                                                        B
                                                     </button>
                                                 )}
-                                            </div>
-                                            <div className="flex items-center text-xs text-gray-300">
-                                                <span className="truncate">{credits.map(c => c.account).join(', ')}</span>
-                                                <svg className="w-3 h-3 md:w-4 md:h-4 text-gray-500 mx-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-                                                <span className="truncate">{debits.map(d => d.account).join(', ')}</span>
+                                                <span className="text-gray-500 mx-2 hidden md:inline">·</span>
+                                                <span className="text-xs text-gray-400 truncate hidden md:inline">{credits.map(c => c.account).join(', ')} → {debits.map(d => d.account).join(', ')}</span>
                                             </div>
                                         </div>
-                                        <div className={`w-20 md:w-32 text-right font-mono ${amountColor} text-xs md:text-sm ml-2`}>{transactionAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
-                                        {accountFilter ? (
-                                            <div className="w-32 text-right text-xs font-mono text-yellow-400 hidden md:block">
-                                                {runningBalance !== null && runningBalance !== undefined ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
-                                                <div className="w-8 text-center text-gray-600 hidden md:block">=</div>
-                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
-                                                <div className="w-8 text-center text-gray-600 hidden md:block">+</div>
-                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
-                                            </>
-                                        )}
-                                    </div>
-                                    {(isExpense || isIncome) && (
-                                        <div className="mt-2 ml-0 md:ml-20 flex items-center">
-                                            {editingCategory === transaction.uuid ? (
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-xs text-gray-400">Category:</span>
-                                                    <select
-                                                        value={selectedCategoryId}
-                                                        onChange={(e) => setSelectedCategoryId(e.target.value)}
-                                                        className="bg-gray-600 text-white text-xs px-2 py-1 rounded"
-                                                    >
-                                                        {categories && categories.map(cat => (
-                                                            <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>
-                                                        ))}
-                                                    </select>
-                                                    <button onClick={() => handleCategoryUpdate(transaction.uuid)} className="text-green-400 hover:text-green-300 text-xs">Save</button>
-                                                    <button onClick={() => setEditingCategory(null)} className="text-gray-400 hover:text-gray-300 text-xs">Cancel</button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-xs text-gray-400">Category:</span>
-                                                    {categoryInfo && categoryInfo.name ? (
-                                                        <div className="flex items-center space-x-1">
-                                                            <div className="w-3 h-3 rounded" style={{backgroundColor: categoryInfo.color}}></div>
-                                                            <span className="text-xs text-gray-300">{categoryInfo.name}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-gray-500">Uncategorized</span>
-                                                    )}
+                                        {/* Category & Actions column - BEFORE Amount */}
+                                        <div className="w-28 hidden lg:flex flex-col items-center justify-center">
+                                            {!transaction.description.startsWith('REVERSED:') && !transaction.description.startsWith('REVERSAL OF:') && (
+                                                <button
+                                                    onClick={() => handleReverse(transaction.uuid, transaction.description)}
+                                                    className="text-red-400 hover:text-red-300 text-xs hover:bg-gray-600 rounded transition-colors"
+                                                    title="Reverse this transaction"
+                                                >
+                                                    ✕ Reverse
+                                                </button>
+                                            )}
+                                            {(isExpense || isIncome) && (
+                                                editingCategory === transaction.uuid ? (
+                                                    <div className="flex items-center space-x-1 mt-0.5">
+                                                        <select
+                                                            value={selectedCategoryId}
+                                                            onChange={(e) => setSelectedCategoryId(e.target.value)}
+                                                            className="bg-gray-600 text-white text-xs px-1 py-0.5 rounded w-20"
+                                                        >
+                                                            {categories && categories.map(cat => (
+                                                                <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>
+                                                            ))}
+                                                        </select>
+                                                        <button onClick={() => handleCategoryUpdate(transaction.uuid)} className="text-green-400 hover:text-green-300 text-xs">✓</button>
+                                                        <button onClick={() => setEditingCategory(null)} className="text-gray-400 hover:text-gray-300 text-xs">✕</button>
+                                                    </div>
+                                                ) : (
                                                     <button
                                                         onClick={() => {
                                                             setEditingCategory(transaction.uuid);
                                                             setSelectedCategoryId(categoryInfo?.id || '');
                                                         }}
-                                                        className="text-cyan-400 hover:text-cyan-300 text-xs"
+                                                        className="flex items-center space-x-1 mt-0.5 hover:bg-gray-600 rounded px-1"
+                                                        title="Click to change category"
                                                     >
-                                                        Edit
+                                                        {categoryInfo && categoryInfo.name ? (
+                                                            <>
+                                                                <div className="w-2 h-2 rounded" style={{backgroundColor: categoryInfo.color}}></div>
+                                                                <span className="text-xs text-gray-400">{categoryInfo.name}</span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-500">No category</span>
+                                                        )}
                                                     </button>
-                                                </div>
+                                                )
                                             )}
                                         </div>
-                                    )}
+                                        {/* Amount column */}
+                                        <div className={`w-20 md:w-28 text-right font-mono ${amountColor} text-xs`}>{transactionAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
+                                        {accountFilter ? (
+                                            <div className="w-28 text-right text-xs font-mono text-yellow-400 hidden md:block">
+                                                {runningBalance !== null && runningBalance !== undefined ? runningBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '—'}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.assets, 'asset')}</div>
+                                                <div className="w-8 text-center text-gray-300 hidden md:block">=</div>
+                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.liabilities, 'liability')}</div>
+                                                <div className="w-8 text-center text-gray-300 hidden md:block">+</div>
+                                                <div className="w-24 text-center text-xs font-mono hidden md:block">{renderImpact(impact.equity, 'equity')}</div>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             );
                         })}
@@ -1652,9 +1756,10 @@
                             </button>
                         </div>
                     )}
-                </div>
-            );
-        }
+                )}
+            </div>
+        );
+    }
 
         function DashboardPage({ showToast, status, setActivePage, dateRange, setDateRange }) {
             const [dashboardData, setDashboardData] = useState(null);
@@ -1695,7 +1800,10 @@
             const loadDashboard = async () => {
                 setIsLoading(true);
                 try {
-                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/dashboard?days=${dateRange}`);
+                    const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+                    const startDate = rangeInfo.startDate.toISOString().split('T')[0];
+                    const endDate = rangeInfo.endDate.toISOString().split('T')[0];
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/dashboard?days=${rangeInfo.days}&start_date=${startDate}&end_date=${endDate}`);
                     if (!response.ok) throw new Error('Failed to fetch dashboard data');
                     const data = await response.json();
                     // console.log('Dashboard data received:', dateRange, data);
@@ -2183,6 +2291,8 @@
                             <option value="30">Last 30 days</option>
                             <option value="60">Last 60 days</option>
                             <option value="90">Last 90 days</option>
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
                         </select>
                     </div>
 
@@ -2320,7 +2430,10 @@
             showRemove = false,
             onRemove = null,
             showAddButton = false,
-            onAddChart = null
+            onAddChart = null,
+            budgets = [],
+            accounts = [],
+            status = null
         }) {
             const chartRef = React.useRef(null);
             const chartInstance = React.useRef(null);
@@ -2328,15 +2441,18 @@
             // Chart type options
             const chartOptions = [
                 { value: 'income-spending', label: 'Income vs Spending' },
+                { value: 'business-profit', label: 'Business Profit Margin' },
+                { value: 'budget-vs-actual', label: 'Budget vs Actual' },
                 { value: 'net-worth', label: 'Net Worth Trend' },
                 { value: 'cash-balance', label: 'Cash Balance Trend' },
                 { value: 'credit-balance', label: 'Credit Balance Over Time' },
                 { value: 'category-trend', label: 'Category Trend' },
-                { value: 'income-by-source', label: 'Income by Source' }
+                { value: 'income-by-source', label: 'Income by Source' },
+                { value: 'runway', label: 'Financial Runway' }
             ];
 
             useEffect(() => {
-                if (!dashboardData) return;
+                if (!dashboardData && chartType !== 'budget-vs-actual' && chartType !== 'runway') return;
                 const timer = setTimeout(() => {
                     if (chartRef.current) {
                         createChart();
@@ -2346,7 +2462,7 @@
                     clearTimeout(timer);
                     if (chartInstance.current) chartInstance.current.destroy();
                 };
-            }, [dashboardData, analysisData, chartType, selectedCreditAccounts, selectedCategoryId, incomeSourceMode]);
+            }, [dashboardData, analysisData, chartType, selectedCreditAccounts, selectedCategoryId, incomeSourceMode, budgets, accounts]);
 
             const createChart = () => {
                 if (chartInstance.current) chartInstance.current.destroy();
@@ -2417,12 +2533,17 @@
                 } else if (chartType === 'cash-balance') {
                     const nwData = dashboardData.net_worth_trend || [];
                     if (nwData.length > 0) {
+                        // Sort by date and deduplicate to prevent backwards lines
+                        const sortedData = [...nwData]
+                            .sort((a, b) => new Date(a.date) - new Date(b.date))
+                            .filter((d, i, arr) => i === 0 || d.date !== arr[i-1].date);
+
                         chartInstance.current = new Chart(ctx, {
                             type: 'line',
                             data: {
                                 datasets: [{
                                     label: 'Cash Balance',
-                                    data: nwData.map(d => ({
+                                    data: sortedData.map(d => ({
                                         x: new Date(d.date),
                                         y: d.net_worth
                                     })),
@@ -2599,7 +2720,8 @@
                                                 const value = ctx.raw;
                                                 const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                                                 const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                                                return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${pct}%)`;
+                                                const name = ctx.label || '';
+                                                return `${name}: $${value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${pct}%)`;
                                             }
                                         }
                                     }
@@ -2636,6 +2758,195 @@
                             });
                         }
                     }
+                } else if (chartType === 'business-profit') {
+                    // Business Profit Margin - shows business income vs business expenses
+                    const businessData = dashboardData?.business_weekly || [];
+                    if (businessData.length > 0) {
+                        chartInstance.current = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: businessData.map(d => new Date(d.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                                datasets: [
+                                    { label: 'Business Income', data: businessData.map(d => d.income), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4, borderWidth: 2 },
+                                    { label: 'Business Expenses', data: businessData.map(d => d.expenses), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', fill: true, tension: 0.4, borderWidth: 2 }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: { duration: 800 },
+                                plugins: {
+                                    legend: { labels: { color: '#e5e7eb' } },
+                                    tooltip: {
+                                        callbacks: {
+                                            afterBody: (items) => {
+                                                if (items.length >= 2) {
+                                                    const income = items.find(i => i.dataset.label === 'Business Income')?.raw || 0;
+                                                    const expenses = items.find(i => i.dataset.label === 'Business Expenses')?.raw || 0;
+                                                    const profit = income - expenses;
+                                                    return `Net Profit: $${profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                                                }
+                                                return '';
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    y: { ticks: { color: '#9ca3af', callback: (v) => '$' + Math.round(v).toLocaleString() }, grid: { color: '#374151' } },
+                                    x: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
+                                }
+                            }
+                        });
+                    }
+                } else if (chartType === 'budget-vs-actual') {
+                    // Budget vs Actual - horizontal bar chart
+                    const budgetData = budgets.filter(b => (b.monthly_limit || b.amount) > 0);
+                    const categorySpending = {};
+                    analysisData.forEach(cat => {
+                        categorySpending[cat.category_id] = parseFloat(cat.total_amount || 0);
+                    });
+
+                    if (budgetData.length > 0) {
+                        const labels = budgetData.map(b => b.category_name || `Category ${b.category_id}`);
+                        const budgetAmounts = budgetData.map(b => parseFloat(b.monthly_limit || b.amount || 0));
+                        const actualAmounts = budgetData.map(b => categorySpending[b.category_id] || 0);
+                        const barColors = budgetData.map((b, i) => {
+                            const actual = actualAmounts[i];
+                            const budget = budgetAmounts[i];
+                            return actual > budget ? '#ef4444' : '#22c55e';  // Red if over, green if under
+                        });
+
+                        chartInstance.current = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: labels,
+                                datasets: [
+                                    {
+                                        label: 'Budget',
+                                        data: budgetAmounts,
+                                        backgroundColor: 'rgba(156, 163, 175, 0.3)',
+                                        borderColor: '#9ca3af',
+                                        borderWidth: 1
+                                    },
+                                    {
+                                        label: 'Actual',
+                                        data: actualAmounts,
+                                        backgroundColor: barColors,
+                                        borderWidth: 0
+                                    }
+                                ]
+                            },
+                            options: {
+                                indexAxis: 'y',
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: { duration: 800 },
+                                plugins: {
+                                    legend: { labels: { color: '#e5e7eb' } },
+                                    tooltip: {
+                                        callbacks: {
+                                            afterLabel: (ctx) => {
+                                                if (ctx.datasetIndex === 1) {  // Actual bar
+                                                    const budget = budgetAmounts[ctx.dataIndex];
+                                                    const actual = ctx.raw;
+                                                    const diff = actual - budget;
+                                                    const pct = budget > 0 ? ((actual / budget) * 100).toFixed(0) : 0;
+                                                    return diff > 0 ? `Over by $${diff.toFixed(2)} (${pct}%)` : `Under by $${Math.abs(diff).toFixed(2)} (${pct}%)`;
+                                                }
+                                                return '';
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: { ticks: { color: '#9ca3af', callback: (v) => '$' + v.toLocaleString() }, grid: { color: '#374151' } },
+                                    y: { ticks: { color: '#e5e7eb' }, grid: { display: false } }
+                                }
+                            }
+                        });
+                    }
+                } else if (chartType === 'runway') {
+                    // Financial Runway gauge - months of expenses covered by liquid assets
+                    // Liquid account types: CHECKING, SAVINGS, CASH
+                    // Not liquid: CREDIT_CARD, LOAN, FIXED_ASSET, EQUITY
+                    const liquidTypes = ['CHECKING', 'SAVINGS', 'CASH'];
+                    const liquidAccounts = accounts.filter(acc => liquidTypes.includes(acc.type));
+                    const liquidAssets = liquidAccounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+
+                    // Get average monthly personal expenses (non-business) - always based on 90 days
+                    const personalExpenses = dashboardData?.personal_monthly_avg || 0;
+                    const monthsOfData = dashboardData?.runway_months_of_data || 0;
+                    const monthlyBurn = personalExpenses > 0 ? personalExpenses : 1;  // Avoid divide by zero
+                    const runwayMonths = personalExpenses > 0 ? liquidAssets / monthlyBurn : 0;
+
+                    // Create a gauge-like doughnut chart
+                    const maxMonths = 12;  // Scale: 0-12 months
+                    const displayMonths = Math.min(runwayMonths, maxMonths);
+                    const remaining = maxMonths - displayMonths;
+
+                    let gaugeColor = '#ef4444';  // Red < 3 months
+                    if (runwayMonths >= 6) gaugeColor = '#22c55e';  // Green >= 6 months
+                    else if (runwayMonths >= 3) gaugeColor = '#f59e0b';  // Yellow 3-6 months
+
+                    // Data context line
+                    const dataContext = monthsOfData > 0
+                        ? `Based on ${monthsOfData} month${monthsOfData > 1 ? 's' : ''} of personal expenses`
+                        : 'No expense data available';
+
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Runway', 'Remaining'],
+                            datasets: [{
+                                data: [displayMonths, remaining],
+                                backgroundColor: [gaugeColor, 'rgba(55, 65, 81, 0.5)'],
+                                borderWidth: 0,
+                                circumference: 180,
+                                rotation: 270
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            cutout: '70%',
+                            layout: {
+                                padding: {
+                                    bottom: 80  // Extra space for text below gauge
+                                }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: () => `${runwayMonths.toFixed(1)} months of runway`
+                                    }
+                                }
+                            }
+                        },
+                        plugins: [{
+                            id: 'runwayText',
+                            afterDraw: (chart) => {
+                                const { ctx, chartArea } = chart;
+                                const centerX = (chartArea.left + chartArea.right) / 2;
+                                // Position text in the center of the half-donut
+                                const gaugeBottom = (chartArea.top + chartArea.bottom) / 2 + 40;
+                                ctx.save();
+                                ctx.textAlign = 'center';
+                                ctx.fillStyle = '#ffffff';
+                                ctx.font = 'bold 36px sans-serif';
+                                ctx.fillText(`${runwayMonths.toFixed(1)}`, centerX, gaugeBottom);
+                                ctx.font = '14px sans-serif';
+                                ctx.fillStyle = '#9ca3af';
+                                ctx.fillText('months runway', centerX, gaugeBottom + 25);
+                                ctx.font = '11px sans-serif';
+                                ctx.fillText(`$${liquidAssets.toLocaleString()} liquid / $${Math.round(monthlyBurn).toLocaleString()}/mo avg`, centerX, gaugeBottom + 45);
+                                ctx.font = '10px sans-serif';
+                                ctx.fillStyle = '#6b7280';
+                                ctx.fillText(dataContext, centerX, gaugeBottom + 62);
+                                ctx.restore();
+                            }
+                        }]
+                    });
                 }
             };
 
@@ -2643,6 +2954,8 @@
 
             const hasData = () => {
                 if (chartType === 'income-spending') return dashboardData?.weekly_income_expenses?.length > 0;
+                if (chartType === 'business-profit') return dashboardData?.business_weekly?.length > 0;
+                if (chartType === 'budget-vs-actual') return budgets?.filter(b => (b.monthly_limit || b.amount) > 0)?.length > 0;
                 if (chartType === 'net-worth') return dashboardData?.assets_vs_liabilities?.length > 0;
                 if (chartType === 'cash-balance') return dashboardData?.net_worth_trend?.length > 0;
                 if (chartType === 'credit-balance') {
@@ -2655,6 +2968,7 @@
                     const data = mode === 'category' ? dashboardData?.income_by_category : dashboardData?.income_by_description;
                     return data?.length > 0 || dashboardData?.total_income > 0;
                 }
+                if (chartType === 'runway') return accounts?.length > 0;
                 return false;
             };
 
@@ -2772,7 +3086,7 @@
         }
 
         // Category Breakdown Panel with expand/collapse and comparison
-        function CategoryBreakdownPanel({ analysisData, previousPeriodData, totalExpenses, categories, dateRange }) {
+        function CategoryBreakdownPanel({ analysisData, previousPeriodData, totalExpenses, categories, dateRange, budgets = [], status }) {
             const [viewMode, setViewMode] = useState('all'); // 'all' or 'parent'
             const [expandedCategories, setExpandedCategories] = useState({});
             const [expandedParents, setExpandedParents] = useState({});
@@ -2872,12 +3186,30 @@
                 return Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
             }, [analysisData]);
 
+            // Get budget info for a category (period-adjusted)
+            const getBudgetInfo = (categoryId, spent) => {
+                const budget = budgets.find(b => b.category_id === categoryId);
+                if (!budget) return null;
+
+                const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+                const periodLimit = (parseFloat(budget.monthly_limit) / 30) * rangeInfo.days;
+                const budgetPercentage = periodLimit > 0 ? (spent / periodLimit) * 100 : 0;
+
+                return {
+                    limit: periodLimit,
+                    percentage: budgetPercentage,
+                    isOver: budgetPercentage >= 100,
+                    isWarning: budgetPercentage >= 80 && budgetPercentage < 100
+                };
+            };
+
             const renderCategoryRow = (cat, indent = 0) => {
                 const amount = parseFloat(cat.total_amount || 0);
                 const percentage = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0;
                 const comparison = getComparison(amount, cat.category_id);
                 const isExpanded = expandedCategories[cat.category_id];
                 const catTransactions = transactions[cat.category_id] || [];
+                const budgetInfo = getBudgetInfo(cat.category_id, amount);
 
                 return (
                     <React.Fragment key={cat.category_id}>
@@ -2891,12 +3223,23 @@
                                 className="w-3 h-3 rounded mr-3 flex-shrink-0"
                                 style={{ backgroundColor: cat.color || '#6366f1' }}
                             ></div>
-                            <span className="flex-1 text-white">{cat.name}</span>
-                            <span className="text-cyan-400 font-medium w-24 text-right">
+                            <span className="flex-1 text-white flex items-center">
+                                {cat.name}
+                                {budgetInfo?.isOver && (
+                                    <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-white text-xs rounded">OVER</span>
+                                )}
+                                {budgetInfo?.isWarning && (
+                                    <span className="ml-2 px-1.5 py-0.5 bg-yellow-600 text-white text-xs rounded">NEAR</span>
+                                )}
+                            </span>
+                            <span style={{ width: '70px' }} className="text-right text-gray-500 text-sm">
+                                {budgetInfo ? `$${Math.round(budgetInfo.limit)}` : ''}
+                            </span>
+                            <span style={{ width: '90px' }} className={`font-medium text-right ${budgetInfo?.isOver ? 'text-red-400' : 'text-cyan-400'}`}>
                                 ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
-                            <span className="text-gray-400 w-16 text-right">{percentage.toFixed(1)}%</span>
-                            <span className={`w-20 text-right ${comparison.color}`}>{comparison.text}</span>
+                            <span style={{ width: '65px' }} className="text-gray-400 text-right">{percentage.toFixed(1)}%</span>
+                            <span style={{ width: '70px' }} className={`text-right ${comparison.color}`}>{comparison.text}</span>
                         </div>
                         {isExpanded && (
                             <div className="bg-gray-750 border-l-2 border-gray-600 ml-8">
@@ -2941,9 +3284,10 @@
                     {/* Header row */}
                     <div className="flex items-center py-2 px-4 text-xs text-gray-500 border-b border-gray-700 bg-gray-750">
                         <span className="flex-1 pl-9">Category</span>
-                        <span className="w-24 text-right">Amount</span>
-                        <span className="w-16 text-right">% Total</span>
-                        <span className="w-20 text-right">vs Prev</span>
+                        <span style={{ width: '70px' }} className="text-right">Budget</span>
+                        <span style={{ width: '90px' }} className="text-right">Amount</span>
+                        <span style={{ width: '65px' }} className="text-right">% Total</span>
+                        <span style={{ width: '70px' }} className="text-right">vs Prev</span>
                     </div>
 
                     <div className="max-h-96 overflow-y-auto">
@@ -2966,11 +3310,12 @@
                                         >
                                             <span className="text-gray-400 mr-2 w-4">{isParentExpanded ? '▼' : '►'}</span>
                                             <span className="flex-1 text-white font-medium">{parentName}</span>
-                                            <span className="text-cyan-400 font-medium w-24 text-right">
+                                            <span style={{ width: '70px' }}></span>
+                                            <span style={{ width: '90px' }} className="text-cyan-400 font-medium text-right">
                                                 ${group.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </span>
-                                            <span className="text-gray-400 w-16 text-right">{parentPercentage.toFixed(1)}%</span>
-                                            <span className="w-20"></span>
+                                            <span style={{ width: '65px' }} className="text-gray-400 text-right">{parentPercentage.toFixed(1)}%</span>
+                                            <span style={{ width: '70px' }}></span>
                                         </div>
                                         {isParentExpanded && group.categories
                                             .sort((a, b) => parseFloat(b.total_amount) - parseFloat(a.total_amount))
@@ -2996,12 +3341,13 @@
             );
         }
 
-        function ExpenseAnalysisPage({ showToast, categories, onDataChange, status, dateRange, setDateRange }) {
+        function ExpenseAnalysisPage({ showToast, categories, onDataChange, status, dateRange, setDateRange, accounts = [] }) {
             const [analysisData, setAnalysisData] = useState([]);
             const [previousPeriodData, setPreviousPeriodData] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [totalExpenses, setTotalExpenses] = useState(0);
             const [dashboardData, setDashboardData] = useState(null);
+            const [budgets, setBudgets] = useState([]);
 
             // Chart state - persisted to localStorage
             const [primaryChart, setPrimaryChart] = useState(() => localStorage.getItem('analysis_primaryChart') || 'income-spending');
@@ -3054,11 +3400,26 @@
             useEffect(() => {
                 loadAnalysis();
                 loadDashboardData();
+                loadBudgets();
             }, [dateRange]);
+
+            const loadBudgets = async () => {
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/budgets`);
+                    if (res.ok) {
+                        setBudgets(await res.json());
+                    }
+                } catch (err) {
+                    console.error('Error loading budgets:', err);
+                }
+            };
 
             const loadDashboardData = async () => {
                 try {
-                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/dashboard?days=${dateRange}`);
+                    const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+                    const startDate = rangeInfo.startDate.toISOString().split('T')[0];
+                    const endDate = rangeInfo.endDate.toISOString().split('T')[0];
+                    const response = await fetchWithCredentials(`${API_BASE_URL}/api/dashboard?days=${rangeInfo.days}&start_date=${startDate}&end_date=${endDate}`);
                     if (response.ok) {
                         const data = await response.json();
                         setDashboardData(data);
@@ -3071,9 +3432,9 @@
             const loadAnalysis = async () => {
                 setIsLoading(true);
                 try {
-                    const currentDate = status?.date ? new Date(status.date) : new Date();
-                    const endDate = currentDate.toISOString().split('T')[0];
-                    const startDate = new Date(currentDate.getTime() - dateRange * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+                    const startDate = rangeInfo.startDate.toISOString().split('T')[0];
+                    const endDate = rangeInfo.endDate.toISOString().split('T')[0];
 
                     // Load current period
                     const response = await fetchWithCredentials(`${API_BASE_URL}/api/expense_analysis?start_date=${startDate}&end_date=${endDate}`);
@@ -3083,9 +3444,9 @@
                     const total = data.reduce((sum, cat) => sum + parseFloat(cat.total_amount || 0), 0);
                     setTotalExpenses(total);
 
-                    // Load previous period for comparison
-                    const prevEndDate = new Date(currentDate.getTime() - dateRange * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                    const prevStartDate = new Date(currentDate.getTime() - dateRange * 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    // Load previous period for comparison (same length as current period)
+                    const prevEndDate = new Date(rangeInfo.startDate.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const prevStartDate = new Date(rangeInfo.startDate.getTime() - rangeInfo.days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                     const prevResponse = await fetchWithCredentials(`${API_BASE_URL}/api/expense_analysis?start_date=${prevStartDate}&end_date=${prevEndDate}`);
                     if (prevResponse.ok) {
                         const prevData = await prevResponse.json();
@@ -3115,13 +3476,15 @@
                         <h2 className="text-2xl font-bold text-white">Analysis</h2>
                         <select
                             value={dateRange}
-                            onChange={(e) => setDateRange(parseInt(e.target.value))}
+                            onChange={(e) => setDateRange(e.target.value)}
                             className="bg-gray-700 text-white px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-cyan-500"
                         >
                             <option value="7">Last 7 days</option>
                             <option value="30">Last 30 days</option>
                             <option value="60">Last 60 days</option>
                             <option value="90">Last 90 days</option>
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
                         </select>
                     </div>
 
@@ -3146,6 +3509,9 @@
                                 setIncomeSourceMode={setIncomeSourceMode}
                                 showAddButton={!showSecondChart}
                                 onAddChart={handleAddChart}
+                                budgets={budgets}
+                                accounts={accounts}
+                                status={status}
                             />
 
                             {/* Secondary Chart (optional) */}
@@ -3164,6 +3530,9 @@
                                     setIncomeSourceMode={setIncomeSourceMode}
                                     showRemove={true}
                                     onRemove={handleRemoveChart}
+                                    budgets={budgets}
+                                    accounts={accounts}
+                                    status={status}
                                 />
                             )}
 
@@ -3174,6 +3543,8 @@
                                 totalExpenses={totalExpenses}
                                 categories={categories}
                                 dateRange={dateRange}
+                                budgets={budgets}
+                                status={status}
                             />
                         </>
                     )}
@@ -4551,6 +4922,7 @@
                 }
                 return '';
             });
+            const [isBusiness, setIsBusiness] = useState(false);
             const [error, setError] = useState('');
 
             const handleSubmit = async (event) => {
@@ -4566,7 +4938,8 @@
                     const payload = {
                         description,
                         amount: parseFloat(amount),
-                        account_id: parseInt(selectedAccountId)
+                        account_id: parseInt(selectedAccountId),
+                        is_business: isBusiness
                     };
 
                     // Add optional fields if provided
@@ -4634,17 +5007,22 @@
                                         value={amountDisplay}
                                         onChange={(e) => {
                                             const raw = e.target.value.replace(/[$,]/g, '');
-                                            setAmount(raw);
+                                            // Limit to 2 decimal places
+                                            const parts = raw.split('.');
+                                            const limitedRaw = parts[1] !== undefined
+                                                ? parts[0] + '.' + parts[1].slice(0, 2)
+                                                : raw;
+                                            setAmount(limitedRaw);
 
-                                            if (!raw) {
+                                            if (!limitedRaw) {
                                                 setAmountDisplay('');
-                                            } else if (!isNaN(raw)) {
-                                                const parts = raw.split('.');
-                                                const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
-                                                const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
+                                            } else if (!isNaN(limitedRaw)) {
+                                                const displayParts = limitedRaw.split('.');
+                                                const wholePart = parseInt(displayParts[0] || 0).toLocaleString('en-US');
+                                                const decimalPart = displayParts[1] !== undefined ? '.' + displayParts[1] : '';
                                                 setAmountDisplay('$' + wholePart + decimalPart);
                                             } else {
-                                                setAmountDisplay('$' + raw);
+                                                setAmountDisplay('$' + limitedRaw);
                                             }
                                         }}
                                         className="w-full bg-gray-700 text-white p-2 rounded font-mono"
@@ -4657,6 +5035,15 @@
                                     <input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded"/>
                                 </div>
                             </div>
+                            <label className="flex items-center mb-4 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={isBusiness}
+                                    onChange={(e) => setIsBusiness(e.target.checked)}
+                                    className="w-4 h-4 mr-2"
+                                />
+                                <span className="text-gray-300 text-sm">Business</span>
+                            </label>
                             {error && <p className="text-red-400 mb-4">{error}</p>}
                             <div className="flex justify-end space-x-4">
                                 <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
@@ -4823,6 +5210,7 @@
                 }
                 return '';
             });
+            const [isBusiness, setIsBusiness] = useState(false);
             const [error, setError] = useState('');
 
             const handleSubmit = async (event) => {
@@ -4838,7 +5226,8 @@
                     const payload = {
                         description,
                         amount: parseFloat(amount),
-                        account_id: parseInt(selectedAccountId)
+                        account_id: parseInt(selectedAccountId),
+                        is_business: isBusiness
                     };
 
                     // Add optional fields if provided
@@ -4906,17 +5295,22 @@
                                         value={amountDisplay}
                                         onChange={(e) => {
                                             const raw = e.target.value.replace(/[$,]/g, '');
-                                            setAmount(raw);
+                                            // Limit to 2 decimal places
+                                            const parts = raw.split('.');
+                                            const limitedRaw = parts[1] !== undefined
+                                                ? parts[0] + '.' + parts[1].slice(0, 2)
+                                                : raw;
+                                            setAmount(limitedRaw);
 
-                                            if (!raw) {
+                                            if (!limitedRaw) {
                                                 setAmountDisplay('');
-                                            } else if (!isNaN(raw)) {
-                                                const parts = raw.split('.');
-                                                const wholePart = parseInt(parts[0] || 0).toLocaleString('en-US');
-                                                const decimalPart = parts[1] !== undefined ? '.' + parts[1] : '';
+                                            } else if (!isNaN(limitedRaw)) {
+                                                const displayParts = limitedRaw.split('.');
+                                                const wholePart = parseInt(displayParts[0] || 0).toLocaleString('en-US');
+                                                const decimalPart = displayParts[1] !== undefined ? '.' + displayParts[1] : '';
                                                 setAmountDisplay('$' + wholePart + decimalPart);
                                             } else {
-                                                setAmountDisplay('$' + raw);
+                                                setAmountDisplay('$' + limitedRaw);
                                             }
                                         }}
                                         className="w-full bg-gray-700 text-white p-2 rounded font-mono"
@@ -4929,6 +5323,15 @@
                                     <input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded"/>
                                 </div>
                             </div>
+                            <label className="flex items-center mb-4 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={isBusiness}
+                                    onChange={(e) => setIsBusiness(e.target.checked)}
+                                    className="w-4 h-4 mr-2"
+                                />
+                                <span className="text-gray-300 text-sm">Business</span>
+                            </label>
                             {error && <p className="text-red-400 mb-4">{error}</p>}
                             <div className="flex justify-end space-x-4">
                                 <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
@@ -5121,6 +5524,749 @@
                             )}
                         </div>
                     </div>
+                </div>
+            );
+        }
+
+        // --- BUDGETS PAGE ---
+        function BudgetsPage({ categories, showToast, dateRange, setDateRange, status }) {
+            const [budgets, setBudgets] = useState([]);
+            const [spending, setSpending] = useState({}); // category_id -> spent amount
+            const [isLoading, setIsLoading] = useState(true);
+            const [newCategoryId, setNewCategoryId] = useState('');
+            const [newLimit, setNewLimit] = useState('');
+
+            // Filter to expense categories only
+            const incomeParentNames = ['Earned Income', 'Investment & Passive Income'];
+            const expenseCategories = categories.filter(cat => {
+                if (cat.parent_name) {
+                    return !incomeParentNames.includes(cat.parent_name);
+                }
+                return !cat.name.toLowerCase().includes('income');
+            });
+
+            const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+
+            const loadBudgets = async () => {
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/budgets`);
+                    if (res.ok) {
+                        setBudgets(await res.json());
+                    }
+                } catch (err) {
+                    showToast('Failed to load budgets', 'error');
+                }
+            };
+
+            const loadSpending = async () => {
+                try {
+                    const startDate = rangeInfo.startDate.toISOString().split('T')[0];
+                    const endDate = rangeInfo.endDate.toISOString().split('T')[0];
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/expense_analysis?start_date=${startDate}&end_date=${endDate}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        const spendingMap = {};
+                        data.forEach(cat => {
+                            spendingMap[cat.category_id] = parseFloat(cat.total_amount || 0);
+                        });
+                        setSpending(spendingMap);
+                    }
+                } catch (err) {
+                    console.error('Failed to load spending:', err);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            useEffect(() => { loadBudgets(); }, []);
+            useEffect(() => { loadSpending(); }, [dateRange, status?.date]);
+
+            const handleAddBudget = async () => {
+                if (!newCategoryId || !newLimit) {
+                    showToast('Please select a category and enter a limit', 'error');
+                    return;
+                }
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/budgets`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category_id: parseInt(newCategoryId), monthly_limit: parseFloat(newLimit) })
+                    });
+                    if (res.ok) {
+                        showToast('Budget added', 'success');
+                        setNewCategoryId('');
+                        setNewLimit('');
+                        loadBudgets();
+                    } else {
+                        const data = await res.json();
+                        showToast(data.message || 'Failed to add budget', 'error');
+                    }
+                } catch (err) {
+                    showToast('Failed to add budget', 'error');
+                }
+            };
+
+            const handleDeleteBudget = async (budgetId) => {
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/budgets/${budgetId}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        showToast('Budget removed', 'success');
+                        loadBudgets();
+                    }
+                } catch (err) {
+                    showToast('Failed to delete budget', 'error');
+                }
+            };
+
+            const getProgressColor = (percentage) => {
+                if (percentage >= 100) return 'bg-red-500';
+                if (percentage >= 80) return 'bg-yellow-500';
+                return 'bg-green-500';
+            };
+
+            // Calculate period-adjusted limit: monthly_limit * (days / 30)
+            const getPeriodLimit = (monthlyLimit) => {
+                return (parseFloat(monthlyLimit) / 30) * rangeInfo.days;
+            };
+
+            // Categories that already have budgets
+            const budgetedCategoryIds = budgets.map(b => b.category_id);
+            const availableCategories = expenseCategories.filter(c => !budgetedCategoryIds.includes(c.category_id) && !c.is_default);
+
+            if (isLoading) return <div className="text-center py-8 text-gray-400">Loading budgets...</div>;
+
+            return (
+                <div className="bg-gray-800 shadow rounded-lg p-4 mt-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h2 className="text-xl font-bold text-white">Budgets</h2>
+                            <p className="text-xs text-gray-400">{rangeInfo.label} ({rangeInfo.days} days)</p>
+                        </div>
+                        <select
+                            value={dateRange}
+                            onChange={(e) => setDateRange(e.target.value)}
+                            className="bg-gray-700 text-white px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        >
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="60">Last 60 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                        </select>
+                    </div>
+                    <p className="text-gray-400 text-sm mb-4">Set spending limits per category (per 30 days). Limits adjust automatically for the selected time period.</p>
+
+                    {/* Add Budget Form */}
+                    <div className="bg-gray-700 p-4 rounded-lg mb-6">
+                        <h3 className="text-white font-medium mb-3">Add Budget (per 30 days)</h3>
+                        <div className="flex flex-wrap gap-3">
+                            <select
+                                value={newCategoryId}
+                                onChange={(e) => setNewCategoryId(e.target.value)}
+                                className="bg-gray-800 text-white p-2 rounded flex-1 min-w-[200px]"
+                            >
+                                <option value="">Select Category</option>
+                                {availableCategories.map(cat => (
+                                    <option key={cat.category_id} value={cat.category_id}>{cat.name}</option>
+                                ))}
+                            </select>
+                            <input
+                                type="number"
+                                step="0.01"
+                                value={newLimit}
+                                onChange={(e) => setNewLimit(e.target.value)}
+                                className="bg-gray-800 text-white p-2 rounded w-32"
+                                placeholder="$/30 days"
+                            />
+                            <button
+                                onClick={handleAddBudget}
+                                className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Add Budget
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Budget List */}
+                    {budgets.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">
+                            No budgets set yet. Add a budget above to start tracking your spending.
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {budgets.map(budget => {
+                                const periodLimit = getPeriodLimit(budget.monthly_limit);
+                                const spent = spending[budget.category_id] || 0;
+                                const percentage = periodLimit > 0 ? (spent / periodLimit) * 100 : 0;
+                                const remaining = periodLimit - spent;
+                                const status = percentage >= 100 ? 'exceeded' : percentage >= 80 ? 'warning' : 'ok';
+
+                                return (
+                                    <div key={budget.budget_id} className="bg-gray-700 p-4 rounded-lg">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <div className="flex items-center">
+                                                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: budget.category_color }}></div>
+                                                <span className="text-white font-medium">{budget.category_name}</span>
+                                                {status === 'exceeded' && (
+                                                    <span className="ml-2 px-2 py-0.5 bg-red-600 text-white text-xs rounded">OVER BUDGET</span>
+                                                )}
+                                                {status === 'warning' && (
+                                                    <span className="ml-2 px-2 py-0.5 bg-yellow-600 text-white text-xs rounded">WARNING</span>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => handleDeleteBudget(budget.budget_id)}
+                                                className="text-red-400 hover:text-red-300 text-sm"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-between text-sm text-gray-300 mb-2">
+                                            <span>${spent.toFixed(2)} spent</span>
+                                            <span>
+                                                ${periodLimit.toFixed(2)} limit
+                                                {rangeInfo.days !== 30 && (
+                                                    <span className="text-gray-500 text-xs ml-1">(${parseFloat(budget.monthly_limit).toFixed(0)}/30d)</span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-gray-600 rounded-full h-4 overflow-hidden">
+                                            <div
+                                                className={`h-full ${getProgressColor(percentage)} transition-all duration-500`}
+                                                style={{ width: `${Math.min(percentage, 100)}%` }}
+                                            ></div>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                            <span>{percentage.toFixed(0)}% used</span>
+                                            <span>${remaining > 0 ? remaining.toFixed(2) : 0} remaining</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // --- SAVINGS GOALS PAGE ---
+        function SavingsGoalsPage({ showToast, accounts = [] }) {
+            const [goals, setGoals] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+            const [showAddForm, setShowAddForm] = useState(false);
+            const [newName, setNewName] = useState('');
+            const [newTarget, setNewTarget] = useState('');
+            const [newTargetDate, setNewTargetDate] = useState('');
+            const [newColor, setNewColor] = useState('#10b981');
+            const [newAccountId, setNewAccountId] = useState('');
+            const [contributeGoalId, setContributeGoalId] = useState(null);
+            const [contributeAmount, setContributeAmount] = useState('');
+            const [contributeMode, setContributeMode] = useState('add'); // 'add' or 'withdraw'
+            const [editingGoalId, setEditingGoalId] = useState(null);
+            const [editName, setEditName] = useState('');
+            const [editTarget, setEditTarget] = useState('');
+            const [editTargetDate, setEditTargetDate] = useState('');
+            const [editColor, setEditColor] = useState('');
+            const [editAccountId, setEditAccountId] = useState('');
+
+            const colorOptions = [
+                '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4'
+            ];
+
+            const loadGoals = async () => {
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/goals`);
+                    if (res.ok) {
+                        setGoals(await res.json());
+                    }
+                } catch (err) {
+                    showToast('Failed to load goals', 'error');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            useEffect(() => { loadGoals(); }, []);
+
+            const handleAddGoal = async () => {
+                if (!newName || !newTarget) {
+                    showToast('Please enter a name and target amount', 'error');
+                    return;
+                }
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/goals`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: newName,
+                            target_amount: parseFloat(newTarget.replace(/,/g, '')),
+                            target_date: newTargetDate || null,
+                            color: newColor,
+                            account_id: newAccountId || null
+                        })
+                    });
+                    if (res.ok) {
+                        showToast('Goal created', 'success');
+                        setNewName('');
+                        setNewTarget('');
+                        setNewTargetDate('');
+                        setNewColor('#10b981');
+                        setNewAccountId('');
+                        setShowAddForm(false);
+                        loadGoals();
+                    } else {
+                        const data = await res.json();
+                        showToast(data.message || 'Failed to create goal', 'error');
+                    }
+                } catch (err) {
+                    showToast('Failed to create goal', 'error');
+                }
+            };
+
+            const handleContribute = async (goalId) => {
+                const cleanAmount = contributeAmount.replace(/,/g, '');
+                if (!cleanAmount || parseFloat(cleanAmount) <= 0) {
+                    showToast('Please enter a valid amount', 'error');
+                    return;
+                }
+                const amount = contributeMode === 'withdraw'
+                    ? -parseFloat(cleanAmount)
+                    : parseFloat(cleanAmount);
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/goals/${goalId}/contribute`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount })
+                    });
+                    if (res.ok) {
+                        showToast(contributeMode === 'withdraw' ? 'Amount withdrawn' : 'Amount added', 'success');
+                        setContributeGoalId(null);
+                        setContributeAmount('');
+                        setContributeMode('add');
+                        loadGoals();
+                    } else {
+                        const data = await res.json();
+                        showToast(data.message || 'Operation failed', 'error');
+                    }
+                } catch (err) {
+                    showToast('Operation failed', 'error');
+                }
+            };
+
+            const handleDeleteGoal = async (goalId) => {
+                if (!confirm('Are you sure you want to delete this goal?')) return;
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/goals/${goalId}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        showToast('Goal deleted', 'success');
+                        loadGoals();
+                    }
+                } catch (err) {
+                    showToast('Failed to delete goal', 'error');
+                }
+            };
+
+            const startEditGoal = (goal) => {
+                setEditingGoalId(goal.goal_id);
+                setEditName(goal.name);
+                setEditTarget(parseFloat(goal.target_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                setEditTargetDate(goal.target_date || '');
+                setEditColor(goal.color);
+                setEditAccountId(goal.account_id || '');
+                setContributeGoalId(null);
+            };
+
+            const handleEditGoal = async (goalId) => {
+                if (!editName || !editTarget) {
+                    showToast('Name and target amount are required', 'error');
+                    return;
+                }
+                try {
+                    const res = await fetchWithCredentials(`${API_BASE_URL}/api/goals/${goalId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: editName,
+                            target_amount: parseFloat(editTarget.replace(/,/g, '')),
+                            target_date: editTargetDate || null,
+                            color: editColor,
+                            account_id: editAccountId || null,
+                            clear_account: !editAccountId
+                        })
+                    });
+                    if (res.ok) {
+                        showToast('Goal updated', 'success');
+                        setEditingGoalId(null);
+                        loadGoals();
+                    } else {
+                        const data = await res.json();
+                        showToast(data.message || 'Failed to update goal', 'error');
+                    }
+                } catch (err) {
+                    showToast('Failed to update goal', 'error');
+                }
+            };
+
+            if (isLoading) return <div className="text-center py-8 text-gray-400">Loading goals...</div>;
+
+            const activeGoals = goals.filter(g => !g.completed_at);
+            const completedGoals = goals.filter(g => g.completed_at);
+
+            return (
+                <div className="bg-gray-800 shadow rounded-lg p-4 mt-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold text-white">Savings Goals</h2>
+                        <button
+                            onClick={() => setShowAddForm(!showAddForm)}
+                            className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded"
+                        >
+                            + New Goal
+                        </button>
+                    </div>
+                    <p className="text-gray-400 text-sm mb-4">Track your progress toward financial goals like emergency funds, vacations, and more.</p>
+
+                    {/* Add Goal Form */}
+                    {showAddForm && (
+                        <div className="bg-gray-700 p-4 rounded-lg mb-6">
+                            <h3 className="text-white font-medium mb-3">Create New Goal</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-gray-400 text-sm mb-1">Goal Name</label>
+                                    <input
+                                        type="text"
+                                        value={newName}
+                                        onChange={(e) => setNewName(e.target.value)}
+                                        className="w-full bg-gray-800 text-white p-2 rounded"
+                                        placeholder="e.g. Emergency Fund"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-gray-400 text-sm mb-1">Target Amount</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={newTarget}
+                                            onChange={(e) => {
+                                                let val = e.target.value.replace(/[^0-9.,]/g, '').replace(/,/g, '');
+                                                const parts = val.split('.');
+                                                if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                                if (parts[1] && parts[1].length > 2) val = parts[0] + '.' + parts[1].slice(0, 2);
+                                                setNewTarget(val);
+                                            }}
+                                            onBlur={(e) => {
+                                                if (newTarget && !isNaN(parseFloat(newTarget))) {
+                                                    const num = parseFloat(newTarget);
+                                                    setNewTarget(num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                                                }
+                                            }}
+                                            onFocus={(e) => {
+                                                if (newTarget) {
+                                                    setNewTarget(newTarget.replace(/,/g, ''));
+                                                }
+                                            }}
+                                            className="w-full bg-gray-800 text-white p-2 pl-7 rounded"
+                                            placeholder="10,000.00"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-gray-400 text-sm mb-1">Link to Account (Optional)</label>
+                                    <select
+                                        value={newAccountId}
+                                        onChange={(e) => setNewAccountId(e.target.value)}
+                                        className="w-full bg-gray-800 text-white p-2 rounded"
+                                    >
+                                        <option value="">No linked account</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex gap-4 items-end">
+                                    <div>
+                                        <label className="block text-gray-400 text-sm mb-1">Color</label>
+                                        <div className="flex gap-2">
+                                            {colorOptions.map(color => (
+                                                <button
+                                                    key={color}
+                                                    onClick={() => setNewColor(color)}
+                                                    className={`w-8 h-8 rounded-full ${newColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-gray-700' : ''}`}
+                                                    style={{ backgroundColor: color }}
+                                                ></button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-gray-400 text-sm mb-1">Target Date</label>
+                                        <input
+                                            type="date"
+                                            value={newTargetDate}
+                                            onChange={(e) => setNewTargetDate(e.target.value)}
+                                            className="bg-gray-800 text-white p-2 rounded date-input-light w-36"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-4">
+                                <button
+                                    onClick={() => setShowAddForm(false)}
+                                    className="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleAddGoal}
+                                    className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded"
+                                >
+                                    Create Goal
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Active Goals */}
+                    {activeGoals.length === 0 && completedGoals.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">
+                            No goals yet. Click "New Goal" to create your first savings goal.
+                        </div>
+                    ) : (
+                        <>
+                            {activeGoals.length > 0 && (
+                                <div className="space-y-4 mb-6">
+                                    {activeGoals.map(goal => (
+                                        <div key={goal.goal_id} className="bg-gray-700 p-4 rounded-lg">
+                                            {editingGoalId === goal.goal_id ? (
+                                                /* Edit Mode */
+                                                <div className="space-y-3">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-gray-400 text-xs mb-1">Goal Name</label>
+                                                            <input
+                                                                type="text"
+                                                                value={editName}
+                                                                onChange={(e) => setEditName(e.target.value)}
+                                                                className="w-full bg-gray-800 text-white p-2 rounded"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-gray-400 text-xs mb-1">Target Amount</label>
+                                                            <div className="relative">
+                                                                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                                                                <input
+                                                                    type="text"
+                                                                    value={editTarget}
+                                                                    onChange={(e) => {
+                                                                        let val = e.target.value.replace(/[^0-9.,]/g, '').replace(/,/g, '');
+                                                                        const parts = val.split('.');
+                                                                        if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                                                        if (parts[1] && parts[1].length > 2) val = parts[0] + '.' + parts[1].slice(0, 2);
+                                                                        setEditTarget(val);
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        if (editTarget && !isNaN(parseFloat(editTarget))) {
+                                                                            setEditTarget(parseFloat(editTarget).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                                                                        }
+                                                                    }}
+                                                                    onFocus={() => { if (editTarget) setEditTarget(editTarget.replace(/,/g, '')); }}
+                                                                    className="w-full bg-gray-800 text-white p-2 pl-7 rounded"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-gray-400 text-xs mb-1">Linked Account</label>
+                                                            <select
+                                                                value={editAccountId}
+                                                                onChange={(e) => setEditAccountId(e.target.value)}
+                                                                className="w-full bg-gray-800 text-white p-2 rounded"
+                                                            >
+                                                                <option value="">No linked account</option>
+                                                                {accounts.map(acc => (
+                                                                    <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-gray-400 text-xs mb-1">Target Date</label>
+                                                            <input
+                                                                type="date"
+                                                                value={editTargetDate}
+                                                                onChange={(e) => setEditTargetDate(e.target.value)}
+                                                                className="w-full bg-gray-800 text-white p-2 rounded date-input-light"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <label className="text-gray-400 text-xs">Color:</label>
+                                                        <div className="flex gap-2">
+                                                            {colorOptions.map(color => (
+                                                                <button
+                                                                    key={color}
+                                                                    onClick={() => setEditColor(color)}
+                                                                    className={`w-6 h-6 rounded-full ${editColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-gray-700' : ''}`}
+                                                                    style={{ backgroundColor: color }}
+                                                                ></button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            onClick={() => setEditingGoalId(null)}
+                                                            className="bg-gray-600 hover:bg-gray-500 text-white py-1 px-3 rounded text-sm"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleEditGoal(goal.goal_id)}
+                                                            className="bg-cyan-600 hover:bg-cyan-500 text-white py-1 px-3 rounded text-sm"
+                                                        >
+                                                            Save Changes
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                /* View Mode */
+                                                <>
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <div>
+                                                            <h3 className="text-white font-medium text-lg">{goal.name}</h3>
+                                                            <div className="flex gap-3 text-sm text-gray-400">
+                                                                {goal.target_date && (
+                                                                    <span>Target: {new Date(goal.target_date).toLocaleDateString()}</span>
+                                                                )}
+                                                                {goal.account_name && (
+                                                                    <span className="text-cyan-400">Linked: {goal.account_name}</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            {goal.uses_account_balance ? (
+                                                                <span className="text-gray-500 text-sm py-1 px-3" title="Balance synced from linked account">
+                                                                    Auto-synced
+                                                                </span>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => { setContributeGoalId(contributeGoalId === goal.goal_id ? null : goal.goal_id); setContributeMode('add'); setContributeAmount(''); setEditingGoalId(null); }}
+                                                                    className="bg-green-600 hover:bg-green-500 text-white text-sm py-1 px-3 rounded"
+                                                                >
+                                                                    Adjust
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => startEditGoal(goal)}
+                                                                className="text-cyan-400 hover:text-cyan-300 text-sm"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteGoal(goal.goal_id)}
+                                                                className="text-red-400 hover:text-red-300 text-sm"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {contributeGoalId === goal.goal_id && (
+                                                        <div className="bg-gray-800 p-3 rounded mb-3">
+                                                            <div className="flex gap-2 mb-2">
+                                                                <button
+                                                                    onClick={() => setContributeMode('add')}
+                                                                    className={`py-1 px-3 rounded text-sm font-medium ${contributeMode === 'add' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400'}`}
+                                                                >
+                                                                    + Add
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setContributeMode('withdraw')}
+                                                                    className={`py-1 px-3 rounded text-sm font-medium ${contributeMode === 'withdraw' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-400'}`}
+                                                                >
+                                                                    − Withdraw
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <div className="relative flex-1">
+                                                                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        inputMode="decimal"
+                                                                        value={contributeAmount}
+                                                                        onChange={(e) => {
+                                                                            let val = e.target.value.replace(/[^0-9.,]/g, '').replace(/,/g, '');
+                                                                            const parts = val.split('.');
+                                                                            if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                                                            if (parts[1] && parts[1].length > 2) val = parts[0] + '.' + parts[1].slice(0, 2);
+                                                                            setContributeAmount(val);
+                                                                        }}
+                                                                        onBlur={() => {
+                                                                            if (contributeAmount && !isNaN(parseFloat(contributeAmount))) {
+                                                                                setContributeAmount(parseFloat(contributeAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                                                                            }
+                                                                        }}
+                                                                        onFocus={() => { if (contributeAmount) setContributeAmount(contributeAmount.replace(/,/g, '')); }}
+                                                                        className="w-full bg-gray-700 text-white p-2 pl-7 rounded"
+                                                                        placeholder={contributeMode === 'add' ? 'Amount to add' : 'Amount to withdraw'}
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleContribute(goal.goal_id)}
+                                                                    className={`${contributeMode === 'add' ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'} text-white py-2 px-4 rounded`}
+                                                                >
+                                                                    {contributeMode === 'add' ? 'Add' : 'Withdraw'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { setContributeGoalId(null); setContributeAmount(''); setContributeMode('add'); }}
+                                                                    className="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex justify-between text-sm mb-2">
+                                                        <span className="text-white font-mono">${parseFloat(goal.current_amount).toLocaleString()}</span>
+                                                        <span className="text-gray-400">of ${parseFloat(goal.target_amount).toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-600 rounded-full h-6 overflow-hidden">
+                                                        <div
+                                                            className="h-full transition-all duration-500 flex items-center justify-center text-xs font-bold text-white"
+                                                            style={{ width: `${Math.min(goal.percentage, 100)}%`, backgroundColor: goal.color }}
+                                                        >
+                                                            {goal.percentage >= 10 && `${goal.percentage.toFixed(0)}%`}
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-gray-400 text-xs mt-1">${goal.remaining.toLocaleString()} remaining</p>
+                                                </>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Completed Goals */}
+                            {completedGoals.length > 0 && (
+                                <div>
+                                    <h3 className="text-gray-400 font-medium mb-3">Completed Goals</h3>
+                                    <div className="space-y-2">
+                                        {completedGoals.map(goal => (
+                                            <div key={goal.goal_id} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center opacity-75">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-green-400 text-xl">✓</span>
+                                                    <div>
+                                                        <span className="text-white">{goal.name}</span>
+                                                        <p className="text-gray-400 text-xs">Completed {new Date(goal.completed_at).toLocaleDateString()}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="text-green-400 font-mono">${parseFloat(goal.target_amount).toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             );
         }
@@ -5522,7 +6668,12 @@
             const [toast, setToast] = useState(null);
             const [showPendingModal, setShowPendingModal] = useState(false);
             const [pendingCount, setPendingCount] = useState(0);
-            const [dateRange, setDateRange] = useState('30');  // Global date range state
+            const [dateRange, setDateRange] = useState(() => localStorage.getItem('perfectbooks_dateRange') || '30');  // Global date range state - persisted
+
+            // Persist date range to localStorage
+            useEffect(() => {
+                localStorage.setItem('perfectbooks_dateRange', dateRange);
+            }, [dateRange]);
 
             const showToast = (message, type = 'info') => {
                 setToast({ message, type });
@@ -5543,6 +6694,11 @@
             const refreshData = async () => {
                 try {
                     !isLoading && setIsLoading(true);
+                    // For meter data, we need to compute proper date range
+                    // Since status might not be loaded yet on first call, use current date as fallback
+                    const rangeInfo = getDateRangeInfo(dateRange, status?.date);
+                    const startDate = rangeInfo.startDate.toISOString().split('T')[0];
+                    const endDate = rangeInfo.endDate.toISOString().split('T')[0];
                     const responses = await Promise.all([
                         fetchWithCredentials(`${API_BASE_URL}/api/accounts`),
                         fetchWithCredentials(`${API_BASE_URL}/api/ledger`),
@@ -5550,7 +6706,7 @@
                         fetchWithCredentials(`${API_BASE_URL}/api/descriptions/expense`),
                         fetchWithCredentials(`${API_BASE_URL}/api/expense_categories`),
                         fetchWithCredentials(`${API_BASE_URL}/api/meter/summary`),
-                        fetchWithCredentials(`${API_BASE_URL}/api/meter/n_day_average?days=${dateRange}`),
+                        fetchWithCredentials(`${API_BASE_URL}/api/meter/n_day_average?days=${rangeInfo.days}&start_date=${startDate}&end_date=${endDate}`),
                         fetchWithCredentials(`${API_BASE_URL}/api/status`)
                     ]);
                     if (responses.some(res => !res.ok)) {
@@ -5665,7 +6821,7 @@
                     <main>
                         {isLoading ? ( <LoadingSpinner text="Loading your financial data..." /> ) : (
                             <div>
-                                {averageData && <Meter averageData={averageData} dateRange={dateRange} setDateRange={setDateRange} />}
+                                {averageData && <Meter averageData={averageData} dateRange={dateRange} setDateRange={setDateRange} status={status} />}
                                 <BalanceSheetSummary accounts={accounts} />
                                 <div className="flex flex-wrap gap-2 mb-6 justify-between items-center">
                                     <div className="flex flex-wrap sm:flex-nowrap gap-2">
@@ -5694,6 +6850,16 @@
                                             className={navButtonClasses('categories')}
                                             style={activePage === 'categories' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
                                         >Categories</button>
+                                        <button
+                                            onClick={() => setActivePage('budgets')}
+                                            className={navButtonClasses('budgets')}
+                                            style={activePage === 'budgets' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Budgets</button>
+                                        <button
+                                            onClick={() => setActivePage('goals')}
+                                            className={navButtonClasses('goals')}
+                                            style={activePage === 'goals' ? {backgroundColor: 'var(--color-primary)', color: 'var(--color-text)'} : {backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)'}}
+                                        >Goals</button>
                                         <button
                                             onClick={() => setActivePage('analysis')}
                                             className={navButtonClasses('analysis')}
@@ -5733,7 +6899,9 @@
                                     </>
                                 )}
                                 {activePage === 'categories' && <CategoriesPage categories={expenseCategories} onDataChange={refreshData} showToast={showToast} />}
-                                {activePage === 'analysis' && <ExpenseAnalysisPage showToast={showToast} categories={expenseCategories} onDataChange={refreshData} status={status} dateRange={dateRange} setDateRange={setDateRange} />}
+                                {activePage === 'budgets' && <BudgetsPage categories={expenseCategories} showToast={showToast} dateRange={dateRange} setDateRange={setDateRange} status={status} />}
+                                {activePage === 'goals' && <SavingsGoalsPage showToast={showToast} accounts={accounts} />}
+                                {activePage === 'analysis' && <ExpenseAnalysisPage showToast={showToast} categories={expenseCategories} onDataChange={refreshData} status={status} dateRange={dateRange} setDateRange={setDateRange} accounts={accounts} />}
                                 {activePage === 'reports' && <FinancialReportsPage showToast={showToast} status={status} />}
                             </div>
                         )}

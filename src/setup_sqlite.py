@@ -150,6 +150,7 @@ def create_database():
                 category_id INTEGER DEFAULT NULL,
                 is_reversal INTEGER DEFAULT 0,
                 reversal_of_id INTEGER DEFAULT NULL,
+                is_business INTEGER DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
             )
         """)
@@ -232,7 +233,50 @@ def create_database():
         print("OK")
 
         # =================================================================
-        # TABLE 9: schema_version - Migration tracking
+        # TABLE 9: budgets - Monthly category budgets
+        # =================================================================
+        print("Creating table 'budgets'...", end=" ")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS budgets (
+                budget_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                category_id INTEGER NOT NULL,
+                monthly_limit TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (category_id) REFERENCES expense_categories(category_id) ON DELETE CASCADE,
+                UNIQUE(user_id, category_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id);")
+        print("OK")
+
+        # =================================================================
+        # TABLE 10: savings_goals - Financial goal tracking
+        # =================================================================
+        print("Creating table 'savings_goals'...", end=" ")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS savings_goals (
+                goal_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                target_amount TEXT NOT NULL,
+                current_amount TEXT DEFAULT '0.00',
+                target_date TEXT,
+                color TEXT DEFAULT '#10b981',
+                icon TEXT DEFAULT 'piggy-bank',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                completed_at TEXT DEFAULT NULL,
+                account_id INTEGER DEFAULT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_user ON savings_goals(user_id);")
+        print("OK")
+
+        # =================================================================
+        # TABLE 11: schema_version - Migration tracking
         # =================================================================
         print("Creating table 'schema_version'...", end=" ")
         cursor.execute("""

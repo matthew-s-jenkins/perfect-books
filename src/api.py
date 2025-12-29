@@ -749,10 +749,12 @@ def get_meter_summary():
 def get_n_day_average():
     try:
         days = request.args.get('days', default=7, type=int)
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
         if days < 1 or days > 365:
             return jsonify({"error": "Days must be between 1 and 365"}), 400
 
-        result = sim.get_n_day_average(user_id=current_user.id, days=days)
+        result = sim.get_n_day_average(user_id=current_user.id, days=days, start_date=start_date, end_date=end_date)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": f"An error occurred: {e}"}), 500
@@ -796,6 +798,7 @@ def manage_expense_category_api(category_id):
         name = data.get('name')
         color = data.get('color')
         is_monthly = data.get('is_monthly', False)
+        parent_id = data.get('parent_id')
 
         if not all([name, color]):
             return jsonify({"success": False, "message": "Name and color are required."}), 400
@@ -805,7 +808,8 @@ def manage_expense_category_api(category_id):
             category_id=category_id,
             name=name,
             color=color,
-            is_monthly=is_monthly
+            is_monthly=is_monthly,
+            parent_id=parent_id
         )
         if success:
             return jsonify({"success": True, "message": message})
@@ -1086,6 +1090,24 @@ def update_expense_category_api():
     )
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
+@app.route('/api/transaction/business', methods=['PUT'])
+@check_sim
+@login_required
+def update_transaction_business_api():
+    data = request.get_json()
+    transaction_uuid = data.get('transaction_uuid')
+    is_business = data.get('is_business', False)
+
+    if not transaction_uuid:
+        return jsonify({"success": False, "message": "transaction_uuid is required."}), 400
+
+    success, message = sim.update_transaction_business(
+        user_id=current_user.id,
+        transaction_uuid=transaction_uuid,
+        is_business=is_business
+    )
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
 # --- ACTION ROUTES ---
 @app.route('/api/advance_time', methods=['POST'])
 @check_sim
@@ -1111,6 +1133,7 @@ def log_income_api():
     amount = data.get('amount')
     transaction_date = data.get('transaction_date')  # Optional custom date
     category_id = data.get('category_id')  # Optional category
+    is_business = data.get('is_business', False)  # Optional business income flag
 
     if not all([account_id, description, amount]):
         return jsonify({"success": False, "message":"Missing required fields."}), 400
@@ -1121,7 +1144,8 @@ def log_income_api():
         description=description,
         amount=amount,
         transaction_date=transaction_date,
-        category_id=category_id
+        category_id=category_id,
+        is_business=is_business
     )
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
@@ -1135,6 +1159,7 @@ def log_expense_api():
     amount = data.get('amount')
     transaction_date = data.get('transaction_date')  # Optional custom date
     category_id = data.get('category_id')  # Optional category
+    is_business = data.get('is_business', False)  # Optional business expense flag
 
     if not all([account_id, description, amount]):
         return jsonify({"success": False, "message":"Missing required fields."}), 400
@@ -1145,7 +1170,8 @@ def log_expense_api():
         description=description,
         amount=amount,
         transaction_date=transaction_date,
-        category_id=category_id
+        category_id=category_id,
+        is_business=is_business
     )
     return jsonify({"success": success, "message": message}), 200 if success else 400
 
@@ -1438,6 +1464,104 @@ def migrate_database():
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+# --- BUDGET ENDPOINTS ---
+
+@app.route('/api/budgets', methods=['GET'])
+@check_sim
+@login_required
+def get_budgets_api():
+    budgets = sim.get_budgets(current_user.id)
+    return jsonify(budgets)
+
+@app.route('/api/budgets', methods=['POST'])
+@check_sim
+@login_required
+def set_budget_api():
+    data = request.get_json()
+    category_id = data.get('category_id')
+    monthly_limit = data.get('monthly_limit')
+
+    if not category_id or not monthly_limit:
+        return jsonify({"success": False, "message": "Category and monthly limit are required"}), 400
+
+    success, message = sim.set_budget(current_user.id, category_id, monthly_limit)
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/budgets/<int:budget_id>', methods=['DELETE'])
+@check_sim
+@login_required
+def delete_budget_api(budget_id):
+    success, message = sim.delete_budget(current_user.id, budget_id)
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+# --- SAVINGS GOALS ENDPOINTS ---
+
+@app.route('/api/goals', methods=['GET'])
+@check_sim
+@login_required
+def get_goals_api():
+    goals = sim.get_savings_goals(current_user.id)
+    return jsonify(goals)
+
+@app.route('/api/goals', methods=['POST'])
+@check_sim
+@login_required
+def add_goal_api():
+    data = request.get_json()
+    name = data.get('name')
+    target_amount = data.get('target_amount')
+    target_date = data.get('target_date')
+    color = data.get('color', '#10b981')
+    icon = data.get('icon', 'piggy-bank')
+    account_id = data.get('account_id')
+
+    if not name or not target_amount:
+        return jsonify({"success": False, "message": "Name and target amount are required"}), 400
+
+    success, result = sim.add_savings_goal(current_user.id, name, target_amount, target_date, color, icon, account_id)
+    if success:
+        return jsonify({"success": True, "goal_id": result})
+    return jsonify({"success": False, "message": result}), 400
+
+@app.route('/api/goals/<int:goal_id>', methods=['PUT'])
+@check_sim
+@login_required
+def update_goal_api(goal_id):
+    data = request.get_json()
+    success, message = sim.update_savings_goal(
+        current_user.id,
+        goal_id,
+        name=data.get('name'),
+        target_amount=data.get('target_amount'),
+        current_amount=data.get('current_amount'),
+        target_date=data.get('target_date'),
+        color=data.get('color'),
+        icon=data.get('icon'),
+        account_id=data.get('account_id'),
+        clear_account=data.get('clear_account', False)
+    )
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/goals/<int:goal_id>/contribute', methods=['POST'])
+@check_sim
+@login_required
+def contribute_to_goal_api(goal_id):
+    data = request.get_json()
+    amount = data.get('amount')
+
+    if amount is None or float(amount) == 0:
+        return jsonify({"success": False, "message": "Amount is required"}), 400
+
+    success, message = sim.contribute_to_goal(current_user.id, goal_id, amount)
+    return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/goals/<int:goal_id>', methods=['DELETE'])
+@check_sim
+@login_required
+def delete_goal_api(goal_id):
+    success, message = sim.delete_savings_goal(current_user.id, goal_id)
+    return jsonify({"success": success, "message": message}), 200 if success else 400
 
 # --- RUN THE APP ---
 if __name__ == '__main__':
