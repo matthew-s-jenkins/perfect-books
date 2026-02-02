@@ -1946,7 +1946,8 @@ class BusinessSimulator:
             from_balance = float(self._row_to_dict(cursor.fetchone())['balance'] or 0)
 
             # Check if from_account has sufficient balance
-            if from_account['type'] == 'CREDIT_CARD':
+            # LINE_OF_CREDIT and CREDIT_CARD can draw against a credit limit
+            if from_account['type'] in ('CREDIT_CARD', 'LINE_OF_CREDIT'):
                 credit_limit = float(from_account['credit_limit']) if from_account['credit_limit'] is not None else None
                 if credit_limit is not None and (from_balance - amount) < -credit_limit:
                     return False, "Transfer declined. Would exceed credit limit."
@@ -2005,7 +2006,8 @@ class BusinessSimulator:
             )
             balance = float(self._row_to_dict(cursor.fetchone())['balance'] or 0)
 
-            if account['type'] == 'CREDIT_CARD':
+            # LINE_OF_CREDIT and CREDIT_CARD can draw against a credit limit
+            if account['type'] in ('CREDIT_CARD', 'LINE_OF_CREDIT'):
                 credit_limit = float(account['credit_limit']) if account['credit_limit'] is not None else None
                 if credit_limit is not None and (balance - amount) < -credit_limit:
                     return False, "Transaction declined. Exceeds credit limit."
@@ -2265,11 +2267,11 @@ class BusinessSimulator:
                 current_date_str = self._get_user_current_date(cursor, user_id)
                 payment_date = self._from_datetime_str(current_date_str)
 
-            # Get loan/credit card account details
+            # Get loan/credit card/line of credit account details
             cursor.execute("""
                 SELECT account_id, name, balance, type
                 FROM accounts
-                WHERE account_id = ? AND user_id = ? AND type IN ('LOAN', 'CREDIT_CARD')
+                WHERE account_id = ? AND user_id = ? AND type IN ('LOAN', 'CREDIT_CARD', 'LINE_OF_CREDIT')
             """, (loan_id, user_id))
 
             loan_account = self._row_to_dict(cursor.fetchone())
@@ -2991,7 +2993,7 @@ class BusinessSimulator:
             for name, data in account_balances.items():
                 if data['type'] in ['CHECKING', 'SAVINGS', 'INVESTMENT', 'CASH', 'FIXED_ASSET']:
                     assets.append({'name': name, 'balance': data['balance']})
-                elif data['type'] in ['CREDIT_CARD', 'LOAN']:
+                elif data['type'] in ['CREDIT_CARD', 'LOAN', 'LINE_OF_CREDIT']:
                     liabilities.append({'name': name, 'balance': abs(data['balance'])})
 
             total_assets = sum(a['balance'] for a in assets)
@@ -3052,14 +3054,14 @@ class BusinessSimulator:
             investing = self._row_to_dict(cursor.fetchone())
             investing_cash = float(self._from_money_str(investing['investing_flow'] or 0))
 
-            # Financing Activities: Loan payments, credit card changes
+            # Financing Activities: Loan payments, credit card changes, line of credit
             cursor.execute("""
                 SELECT
                     SUM(debit) - SUM(credit) as financing_flow
                 FROM financial_ledger fl
                 JOIN accounts a ON fl.account = a.name AND fl.user_id = a.user_id
                 WHERE fl.user_id = ?
-                  AND a.type IN ('LOAN', 'CREDIT_CARD')
+                  AND a.type IN ('LOAN', 'CREDIT_CARD', 'LINE_OF_CREDIT')
                   AND fl.transaction_date BETWEEN ? AND ?
             """, (user_id, start_date, end_date))
             financing = self._row_to_dict(cursor.fetchone())
@@ -3422,7 +3424,7 @@ class BusinessSimulator:
             cursor.execute("""
                 SELECT DATE(transaction_date) as date,
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'INVESTMENT', 'FIXED_ASSET') THEN debit - credit ELSE 0 END) as asset_change,
-                    SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD') THEN credit - debit ELSE 0 END) as liability_change
+                    SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD', 'LINE_OF_CREDIT') THEN credit - debit ELSE 0 END) as liability_change
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = ? AND transaction_date BETWEEN ? AND ?
@@ -3435,7 +3437,7 @@ class BusinessSimulator:
             cursor.execute("""
                 SELECT
                     SUM(CASE WHEN a.type IN ('CHECKING', 'SAVINGS', 'CASH', 'INVESTMENT', 'FIXED_ASSET') THEN debit - credit ELSE 0 END) as starting_assets,
-                    SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD') THEN credit - debit ELSE 0 END) as starting_liabilities
+                    SUM(CASE WHEN a.type IN ('LOAN', 'CREDIT_CARD', 'LINE_OF_CREDIT') THEN credit - debit ELSE 0 END) as starting_liabilities
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = ? AND transaction_date < ?
@@ -3481,12 +3483,12 @@ class BusinessSimulator:
             """, (user_id, start_date, current_date))
             top_categories = self._rows_to_dicts(cursor.fetchall())
 
-            # Get credit balance over time (credit cards + loans)
+            # Get credit balance over time (credit cards + loans + lines of credit)
             # First, get all credit accounts for this user
             cursor.execute("""
                 SELECT account_id, name, type
                 FROM accounts
-                WHERE user_id = ? AND type IN ('CREDIT_CARD', 'LOAN')
+                WHERE user_id = ? AND type IN ('CREDIT_CARD', 'LOAN', 'LINE_OF_CREDIT')
                 ORDER BY name
             """, (user_id,))
             credit_accounts = self._rows_to_dicts(cursor.fetchall())
@@ -3501,7 +3503,7 @@ class BusinessSimulator:
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = ?
-                    AND a.type IN ('CREDIT_CARD', 'LOAN')
+                    AND a.type IN ('CREDIT_CARD', 'LOAN', 'LINE_OF_CREDIT')
                     AND transaction_date BETWEEN ? AND ?
                 GROUP BY DATE(transaction_date), a.account_id, a.name, a.type
                 ORDER BY date, a.name
@@ -3518,7 +3520,7 @@ class BusinessSimulator:
                 FROM financial_ledger l
                 JOIN accounts a ON l.account = a.name AND l.user_id = a.user_id
                 WHERE l.user_id = ?
-                    AND a.type IN ('CREDIT_CARD', 'LOAN')
+                    AND a.type IN ('CREDIT_CARD', 'LOAN', 'LINE_OF_CREDIT')
                     AND transaction_date < ?
                 GROUP BY a.account_id, a.name, a.type
             """, (user_id, start_date_str))

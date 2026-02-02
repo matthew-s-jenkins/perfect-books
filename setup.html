@@ -180,13 +180,13 @@
 
                 // Convert balance to negative for credit cards and loans (they represent debt)
                 const balanceValue = parseFloat(newBalance);
-                const finalBalance = (newType === 'CREDIT_CARD' || newType === 'LOAN') ? -Math.abs(balanceValue) : balanceValue;
+                const finalBalance = (newType === 'CREDIT_CARD' || newType === 'LOAN' || newType === 'LINE_OF_CREDIT') ? -Math.abs(balanceValue) : balanceValue;
 
                 const newAccount = {
                     name: newName,
                     type: newType,
                     balance: finalBalance,
-                    credit_limit: newType === 'CREDIT_CARD' ? parseFloat(newCreditLimit) : null,
+                    credit_limit: (newType === 'CREDIT_CARD' || newType === 'LINE_OF_CREDIT') ? parseFloat(newCreditLimit) : null,
                 };
                  setAccounts([...accounts, newAccount]);
 
@@ -209,13 +209,13 @@
 
                 // Convert balance to negative for credit cards and loans (they represent debt)
                 const balanceValue = parseFloat(newBalance);
-                const finalBalance = (newType === 'CREDIT_CARD' || newType === 'LOAN') ? -Math.abs(balanceValue) : balanceValue;
+                const finalBalance = (newType === 'CREDIT_CARD' || newType === 'LOAN' || newType === 'LINE_OF_CREDIT') ? -Math.abs(balanceValue) : balanceValue;
 
                 const newAccountData = {
                     name: newName,
                     type: newType,
                     balance: finalBalance,
-                    credit_limit: newType === 'CREDIT_CARD' ? parseFloat(newCreditLimit) : null,
+                    credit_limit: (newType === 'CREDIT_CARD' || newType === 'LINE_OF_CREDIT') ? parseFloat(newCreditLimit) : null,
                 };
 
                 setIsSubmitting(true);
@@ -374,27 +374,28 @@
                                         <option value="CREDIT_CARD">Credit Card</option>
                                         <option value="CASH">Cash</option>
                                         <option value="LOAN">Loan</option>
+                                        <option value="LINE_OF_CREDIT">Line of Credit (HELOC)</option>
                                         <option value="FIXED_ASSET">Fixed Asset</option>
                                     </select>
                                 </div>
                                 <div className="flex flex-col">
                                     <label className="block text-gray-400 mb-1 text-sm">
-                                        {(newType === 'CREDIT_CARD' || newType === 'LOAN') ? 'Amount Owed' : 'Initial Balance'}
+                                        {(newType === 'CREDIT_CARD' || newType === 'LOAN' || newType === 'LINE_OF_CREDIT') ? 'Amount Owed' : 'Initial Balance'}
                                     </label>
                                     <input
                                         type="text"
                                         value={newBalanceDisplay}
                                         onInput={handleBalanceChange}
                                         className="w-full bg-gray-600 text-white p-2 rounded font-mono"
-                                        placeholder={(newType === 'CREDIT_CARD' || newType === 'LOAN') ? '$1,000.00' : '$0.00'}
+                                        placeholder={(newType === 'CREDIT_CARD' || newType === 'LOAN' || newType === 'LINE_OF_CREDIT') ? '$1,000.00' : '$0.00'}
                                     />
                                     <div className="h-6 mt-1">
-                                        {(newType === 'CREDIT_CARD' || newType === 'LOAN') && (
+                                        {(newType === 'CREDIT_CARD' || newType === 'LOAN' || newType === 'LINE_OF_CREDIT') && (
                                             <p className="text-xs text-gray-500">Enter as positive (e.g., $1,000.00 for $1,000 owed)</p>
                                         )}
                                     </div>
                                 </div>
-                                {newType === 'CREDIT_CARD' && (
+                                {(newType === 'CREDIT_CARD' || newType === 'LINE_OF_CREDIT') && (
                                     <div className="flex flex-col">
                                         <label className="block text-gray-400 mb-1 text-sm">Credit Limit</label>
                                         <input type="text" value={newCreditLimitDisplay} onInput={handleCreditLimitChange} className="w-full bg-gray-600 text-white p-2 rounded font-mono" placeholder="$5,000.00"/>

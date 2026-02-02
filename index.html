@@ -167,7 +167,7 @@
             const type = accountTypeMap.get(accountName);
             const name = accountName.toLowerCase();
 
-            if (type === 'CREDIT_CARD' || type === 'LOAN' || name.includes('mortgage')) return 'liability';
+            if (type === 'CREDIT_CARD' || type === 'LOAN' || type === 'LINE_OF_CREDIT' || name.includes('mortgage')) return 'liability';
             if (name === 'system') return 'system';
             if (name.includes('equity') || name.includes('capital') || name.includes('retained')) return 'equity';
             if (name.includes('income') || name.includes('revenue') || name.includes('sales')) return 'income';
@@ -815,6 +815,15 @@
                                                     onClick={() => setPayingLoan(account)}
                                                     className="text-green-400 hover:text-green-300 text-xs"
                                                     title="Make credit card payment"
+                                                >
+                                                    Make Payment
+                                                </button>
+                                            )}
+                                            {account.type === 'LINE_OF_CREDIT' && account.balance < 0 && (
+                                                <button
+                                                    onClick={() => setPayingLoan(account)}
+                                                    className="text-green-400 hover:text-green-300 text-xs"
+                                                    title="Make line of credit payment"
                                                 >
                                                     Make Payment
                                                 </button>
@@ -1756,7 +1765,6 @@
                             </button>
                         </div>
                     )}
-                )}
             </div>
         );
     }
@@ -4765,7 +4773,7 @@
                             <input type="number" min="1" max="31" value={newDueDay} onChange={(e) => setNewDueDay(e.target.value)} className="bg-gray-800 text-white p-2 rounded" placeholder={newFrequency === 'WEEKLY' || newFrequency === 'BI_WEEKLY' ? 'Day of Week (1-7)' : 'Due Day'} title={newFrequency === 'WEEKLY' || newFrequency === 'BI_WEEKLY' ? '1=Mon, 2=Tue... 7=Sun' : 'Day of month (1-31)'} />
                             <select value={newPaymentAccountId} onChange={(e) => setNewPaymentAccountId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
                                 <option value="">Select Account</option>
-                                {accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CREDIT_CARD'].includes(acc.type)).map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
+                                {accounts.filter(acc => ['CHECKING', 'SAVINGS', 'CREDIT_CARD', 'LINE_OF_CREDIT'].includes(acc.type)).map(acc => <option key={acc.account_id} value={acc.account_id}>{acc.name}</option>)}
                             </select>
                             <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="bg-gray-800 text-white p-2 rounded">
                                 <option value="">Category (Opt.)</option>

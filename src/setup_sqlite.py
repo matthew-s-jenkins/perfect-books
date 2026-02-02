@@ -84,7 +84,7 @@ def create_database():
                 account_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                type TEXT CHECK(type IN ('CHECKING', 'SAVINGS', 'CREDIT_CARD', 'CASH', 'LOAN', 'FIXED_ASSET', 'EQUITY')) NOT NULL,
+                type TEXT CHECK(type IN ('CHECKING', 'SAVINGS', 'CREDIT_CARD', 'CASH', 'LOAN', 'LINE_OF_CREDIT', 'FIXED_ASSET', 'EQUITY')) NOT NULL,
                 balance TEXT NOT NULL DEFAULT '0.00',
                 interest_rate REAL DEFAULT NULL,
                 last_interest_date TEXT DEFAULT NULL,
